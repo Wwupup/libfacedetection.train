@@ -269,9 +269,9 @@ class WIDERFace(data.Dataset):
 
         self.widerface_split_fpaths = {
             'val':
-            os.path.join(self.root, 'wider_face_split', 'wider_face_val.mat'),
+            os.path.join(self.root, 'labelv2', 'val', 'gt', 'wider_face_val.mat'),
             'test':
-            os.path.join(self.root, 'wider_face_split', 'wider_face_test.mat')
+            os.path.join(self.root, 'labelv2', 'test', 'gt', 'wider_face_test.mat')
         }
 
         self.img_list, self.num_img = self.load_list()
@@ -330,6 +330,36 @@ class Detector:
     def detect(self, img, score_thresh=0.5, mode='ORIGIN'):
         pass
 
+class ADABOOST():
+    def __init__(self, model_file=None, nms_thresh=0.5) -> None:
+        # model_file = "xml/haarcascade_frontalface_default.xml"
+        self.face_cascade = cv2.CascadeClassifier(model_file)
+        self.time_engine = TimeEngine()
+
+    def detect(self, img, score_thresh=0.5, mode='ORIGIN'):
+        self.time_engine.tic('preprocess')
+        det_img, det_scale = resize_img(img, mode)
+        det_gray = cv2.cvtColor(det_img, cv2.COLOR_BGR2GRAY)
+        self.time_engine.toc('preprocess')
+
+        self.time_engine.tic('forward_run')
+        bboxes = self.face_cascade.detectMultiScale(det_gray, 1.3, 5)
+        self.time_engine.toc('forward_run')
+
+        self.time_engine.tic('postprocess')
+        if not isinstance(bboxes, tuple):
+            bboxes = bboxes.astype(np.float32)
+            bboxes[:, 2] += bboxes[:, 0]
+            bboxes[:, 3] += bboxes[:, 1]
+            bboxes /= det_scale
+            scores = np.ones(bboxes.shape[0]).astype(np.float32)
+            pre_det = np.hstack((bboxes, scores[:, None]))
+        else:
+            pre_det = np.zeros((0, 5)).astype(np.float32)
+        # keep = nms(pre_det, self.nms_thresh)
+        # bboxes = pre_det[keep, :]
+        self.time_engine.toc('postprocess')
+        return pre_det, None
 
 class YUNET(Detector):
 
@@ -855,6 +885,9 @@ if __name__ == '__main__':
     elif os.path.basename(model_file).lower().startswith('retinaface'):
         prefix = 'retinaface'
         detector = RETINAFACE(model_file, nms_thresh=args.nms_thresh)
+    elif os.path.basename(model_file).lower().endswith('.xml'):
+        prefix = 'adaboost'
+        detector = ADABOOST(model_file, nms_thresh=args.nms_thresh)
     else:
         raise ValueError('Unknown detector!')
 
