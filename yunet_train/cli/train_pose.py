@@ -131,66 +131,70 @@ def run_training(args: argparse.Namespace) -> None:
                 f"kpt={stats.loss_kpt:.6f} kpt_vis={stats.loss_kpt_vis:.6f} "
                 f"epoch_seconds={epoch_seconds:.3f}"
             )
-            _append_metrics_csv(args.work_dir / "metrics.csv", epoch, stats, lr=lr)
-            _save_pose_checkpoint(
-                args.work_dir / "latest.pth",
-                model,
-                optimizer,
-                lr_scheduler,
-                epoch,
-                args,
-                stats,
-                lr,
+            _try_append_metrics_csv(args.work_dir / "metrics.csv", epoch, stats, lr=lr, logger=logger)
+            _try_save_pose_checkpoint(
+                path=args.work_dir / "latest.pth",
+                model=model,
+                optimizer=optimizer,
+                lr_scheduler=lr_scheduler,
+                epoch=epoch,
+                args=args,
+                stats=stats,
+                lr=lr,
                 extra_metrics={"best_loss": best_loss},
+                logger=logger,
             )
-            logger(f"saved_latest_checkpoint path={args.work_dir / 'latest.pth'}")
 
-            if epoch % args.checkpoint_interval == 0:
+            if args.checkpoint_interval > 0 and epoch % args.checkpoint_interval == 0:
                 path = args.work_dir / f"epoch_{epoch}.pth"
-                _save_pose_checkpoint(
-                    path,
-                    model,
-                    optimizer,
-                    lr_scheduler,
-                    epoch,
-                    args,
-                    stats,
-                    lr,
-                    extra_metrics={"best_loss": best_loss},
-                )
-                logger(f"saved_checkpoint path={path}")
-
-            if val_loader is not None and epoch % args.eval_interval == 0:
-                val_stats = evaluate_pose_loss(model=model, criterion=criterion, data_loader=val_loader, device=device)
-                logger(
-                    f"eval epoch={epoch} loss={val_stats.loss:.6f} cls={val_stats.loss_cls:.6f} "
-                    f"bbox={val_stats.loss_bbox:.6f} obj={val_stats.loss_obj:.6f} "
-                    f"kpt={val_stats.loss_kpt:.6f} kpt_vis={val_stats.loss_kpt_vis:.6f}"
-                )
-                _append_metrics_csv(args.work_dir / "val_metrics.csv", epoch, val_stats, lr=lr)
-                _save_pose_checkpoint(
-                    args.work_dir / f"eval_epoch_{epoch}.pth",
-                    model,
-                    optimizer,
-                    lr_scheduler,
-                    epoch,
-                    args,
-                    val_stats,
-                    lr,
-                    extra_metrics={"best_loss": best_loss},
-                )
-                best_loss = _maybe_save_best_checkpoint(
-                    work_dir=args.work_dir,
+                _try_save_pose_checkpoint(
+                    path=path,
                     model=model,
                     optimizer=optimizer,
                     lr_scheduler=lr_scheduler,
                     epoch=epoch,
                     args=args,
-                    stats=val_stats,
+                    stats=stats,
                     lr=lr,
-                    best_loss=best_loss,
+                    extra_metrics={"best_loss": best_loss},
                     logger=logger,
                 )
+
+            if val_loader is not None and epoch % args.eval_interval == 0:
+                try:
+                    val_stats = evaluate_pose_loss(model=model, criterion=criterion, data_loader=val_loader, device=device)
+                    logger(
+                        f"eval epoch={epoch} loss={val_stats.loss:.6f} cls={val_stats.loss_cls:.6f} "
+                        f"bbox={val_stats.loss_bbox:.6f} obj={val_stats.loss_obj:.6f} "
+                        f"kpt={val_stats.loss_kpt:.6f} kpt_vis={val_stats.loss_kpt_vis:.6f}"
+                    )
+                    _try_append_metrics_csv(args.work_dir / "val_metrics.csv", epoch, val_stats, lr=lr, logger=logger)
+                    _try_save_pose_checkpoint(
+                        path=args.work_dir / f"eval_epoch_{epoch}.pth",
+                        model=model,
+                        optimizer=optimizer,
+                        lr_scheduler=lr_scheduler,
+                        epoch=epoch,
+                        args=args,
+                        stats=val_stats,
+                        lr=lr,
+                        extra_metrics={"best_loss": best_loss},
+                        logger=logger,
+                    )
+                    best_loss = _maybe_save_best_checkpoint(
+                        work_dir=args.work_dir,
+                        model=model,
+                        optimizer=optimizer,
+                        lr_scheduler=lr_scheduler,
+                        epoch=epoch,
+                        args=args,
+                        stats=val_stats,
+                        lr=lr,
+                        best_loss=best_loss,
+                        logger=logger,
+                    )
+                except Exception as exc:
+                    logger(f"eval_failed epoch={epoch} error={type(exc).__name__}: {exc}")
             elif val_loader is None:
                 best_loss = _maybe_save_best_checkpoint(
                     work_dir=args.work_dir,
@@ -273,6 +277,28 @@ def _save_pose_checkpoint(
     )
 
 
+def _try_save_pose_checkpoint(
+    *,
+    path: Path,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    lr_scheduler: LinearWarmupMultiStepLR,
+    epoch: int,
+    args: argparse.Namespace,
+    stats: Any,
+    lr: float,
+    extra_metrics: dict[str, float | None] | None,
+    logger: "RunLogger",
+) -> bool:
+    try:
+        _save_pose_checkpoint(path, model, optimizer, lr_scheduler, epoch, args, stats, lr, extra_metrics=extra_metrics)
+    except Exception as exc:
+        logger(f"checkpoint_save_failed path={path} error={type(exc).__name__}: {exc}")
+        return False
+    logger(f"saved_checkpoint path={path}")
+    return True
+
+
 def _maybe_save_best_checkpoint(
     *,
     work_dir: Path,
@@ -289,22 +315,26 @@ def _maybe_save_best_checkpoint(
     if best_loss is not None and stats.loss >= best_loss:
         return best_loss
 
-    best_loss = stats.loss
+    candidate_loss = stats.loss
     best_path = work_dir / "best_loss.pth"
-    _save_pose_checkpoint(
-        best_path,
-        model,
-        optimizer,
-        lr_scheduler,
-        epoch,
-        args,
-        stats,
-        lr,
-        extra_metrics={"best_loss": best_loss},
-    )
-    _write_best_loss(work_dir, best_loss=best_loss, epoch=epoch)
-    logger(f"saved_best_checkpoint path={best_path} best_loss={best_loss:.6f}")
-    return best_loss
+    try:
+        _save_pose_checkpoint(
+            best_path,
+            model,
+            optimizer,
+            lr_scheduler,
+            epoch,
+            args,
+            stats,
+            lr,
+            extra_metrics={"best_loss": candidate_loss},
+        )
+        _write_best_loss(work_dir, best_loss=candidate_loss, epoch=epoch)
+    except Exception as exc:
+        logger(f"best_checkpoint_save_failed path={best_path} error={type(exc).__name__}: {exc}")
+        return best_loss
+    logger(f"saved_best_checkpoint path={best_path} best_loss={candidate_loss:.6f}")
+    return candidate_loss
 
 
 def _append_metrics_csv(path: Path, epoch: int, stats: Any, *, lr: float) -> None:
@@ -331,6 +361,15 @@ def _append_metrics_csv(path: Path, epoch: int, stats: Any, *, lr: float) -> Non
         )
 
 
+def _try_append_metrics_csv(path: Path, epoch: int, stats: Any, *, lr: float, logger: "RunLogger") -> bool:
+    try:
+        _append_metrics_csv(path, epoch, stats, lr=lr)
+    except Exception as exc:
+        logger(f"metrics_write_failed path={path} error={type(exc).__name__}: {exc}")
+        return False
+    return True
+
+
 def _serializable_config(args: argparse.Namespace) -> dict[str, object]:
     return {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()}
 
@@ -342,7 +381,7 @@ def _read_best_loss(work_dir: Path) -> float | None:
     try:
         first_line = best_file.read_text(encoding="utf-8").splitlines()[0]
         return float(first_line.split(",", maxsplit=1)[0])
-    except (IndexError, ValueError):
+    except (IndexError, OSError, ValueError):
         return None
 
 
@@ -381,11 +420,17 @@ class RunLogger:
     def __call__(self, message: str) -> None:
         line = f"[{datetime.now():%Y-%m-%d %H:%M:%S}] {message}"
         print(line, flush=True)
-        self._file.write(line + "\n")
-        self._file.flush()
+        try:
+            self._file.write(line + "\n")
+            self._file.flush()
+        except OSError as exc:
+            print(f"[{datetime.now():%Y-%m-%d %H:%M:%S}] log_write_failed error={type(exc).__name__}: {exc}", flush=True)
 
     def close(self) -> None:
-        self._file.close()
+        try:
+            self._file.close()
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

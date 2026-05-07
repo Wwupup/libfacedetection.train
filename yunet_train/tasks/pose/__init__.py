@@ -4,7 +4,7 @@ from .criterion import YuNetPoseCriterion, YuNetPoseLossWeights
 from .dataset import YOLOPoseDataset
 from .losses import keypoint_visibility_loss, oks_keypoint_loss
 from .model import YuNetPose, YuNetPoseHead, build_yunet_pose
-from .paths import COCO8_POSE_ROOT, COCO_PERSON_KEYPOINTS_VAL2017, COCO_ROOT, COCO_VAL2017_IMAGE_DIR, DATA_ROOT, REPO_ROOT
+from .paths import COCO8_POSE_ROOT, COCO_PERSON_KEYPOINTS_VAL2017, COCO_ROOT, COCO_VAL_IMAGE_DIR, DATA_ROOT, REPO_ROOT
 from .postprocess import PoseDetectionResult, YuNetPosePostprocessor
 from .transforms import (
     Compose,
@@ -38,7 +38,7 @@ __all__ = [
     "COCO8_POSE_ROOT",
     "COCO_PERSON_KEYPOINTS_VAL2017",
     "COCO_ROOT",
-    "COCO_VAL2017_IMAGE_DIR",
+    "COCO_VAL_IMAGE_DIR",
     "DATA_ROOT",
     "REPO_ROOT",
     "oks_keypoint_loss",

@@ -28,8 +28,8 @@ class YOLOPoseDataset(Dataset):
         self.split = split
         self.transform = transform
         self.kpt_shape = kpt_shape
-        self.image_dir = self.root / (image_dir or f"images/{split}")
-        self.label_dir = self.root / (label_dir or f"labels/{split}")
+        self.image_dir = self._resolve_split_dir("images", split, image_dir)
+        self.label_dir = self._resolve_split_dir("labels", split, label_dir)
         self.records = self._collect_records()
 
     def __len__(self) -> int:
@@ -69,6 +69,20 @@ class YOLOPoseDataset(Dataset):
             label_path = (self.label_dir / rel).with_suffix(".txt")
             records.append(PoseRecord(image_path=image_path, label_path=label_path, filename=rel.as_posix()))
         return records
+
+    def _resolve_split_dir(self, kind: str, split: str, override: str | Path | None) -> Path:
+        if override is not None:
+            path = Path(override)
+            return path if path.is_absolute() else self.root / path
+
+        candidates = [self.root / kind / split]
+        if split in {"train", "val"}:
+            candidates.append(self.root / kind / f"{split}2017")
+
+        for path in candidates:
+            if path.exists():
+                return path
+        return candidates[0]
 
     def _read_label_file(
         self,

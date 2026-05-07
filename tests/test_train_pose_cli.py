@@ -120,3 +120,44 @@ def test_train_pose_cli_resumes_from_latest_checkpoint() -> None:
     assert "best_loss" in best_data["metrics"]
     assert "resumed_checkpoint" in log_text
     rmtree(work_dir)
+
+
+@pytest.mark.skipif(not _coco8_pose_root().exists(), reason="data/coco8-pose is not available")
+def test_train_pose_cli_checkpoint_interval_zero_disables_epoch_checkpoint() -> None:
+    work_dir = Path(__file__).resolve().parent / "output" / "train_pose_cli_no_epoch_checkpoint"
+    if work_dir.exists():
+        rmtree(work_dir)
+    args = argparse.Namespace(
+        data_root=_coco8_pose_root(),
+        variant="yunet_n",
+        work_dir=work_dir,
+        image_size=64,
+        batch_size=1,
+        workers=0,
+        prefetch_factor=1,
+        epochs=1,
+        lr=1e-4,
+        lr_steps=[400, 544],
+        lr_gamma=0.1,
+        warmup_iters=0,
+        warmup_ratio=0.001,
+        momentum=0.9,
+        weight_decay=0.0,
+        device="cpu",
+        checkpoint_interval=0,
+        eval_interval=0,
+        resume=None,
+        limit_samples=1,
+        eval_limit_samples=None,
+        no_pin_memory=False,
+        no_persistent_workers=False,
+        log_interval=0,
+        log_file=None,
+    )
+
+    train_pose_cli.run_training(args)
+
+    assert (work_dir / "latest.pth").exists()
+    assert (work_dir / "best_loss.pth").exists()
+    assert not (work_dir / "epoch_1.pth").exists()
+    rmtree(work_dir)

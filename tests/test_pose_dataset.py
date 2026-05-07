@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import cv2
+import numpy as np
 from yunet_train.tasks.pose import COCO8_POSE_ROOT
 
 import pytest
@@ -45,3 +47,23 @@ def test_yolo_pose_dataset_collates_training_batch() -> None:
     assert len(batch.keypoints) == 2
     assert batch.keypoints[0].shape[1:] == (17, 3)
     assert batch.metas[0]["kpt_shape"] == (17, 3)
+
+
+def test_yolo_pose_dataset_resolves_coco2017_split_layout(tmp_path: Path) -> None:
+    image_dir = tmp_path / "images" / "train2017"
+    label_dir = tmp_path / "labels" / "train2017"
+    image_dir.mkdir(parents=True)
+    label_dir.mkdir(parents=True)
+    image_path = image_dir / "000000000001.jpg"
+    label_path = label_dir / "000000000001.txt"
+
+    assert cv2.imwrite(str(image_path), np.zeros((32, 32, 3), dtype=np.uint8))
+    keypoints = " ".join(["0.5 0.5 2"] * 17)
+    label_path.write_text(f"0 0.5 0.5 0.5 0.5 {keypoints}\n", encoding="utf-8")
+
+    dataset = YOLOPoseDataset(tmp_path, split="train")
+
+    assert len(dataset) == 1
+    assert dataset.image_dir == image_dir
+    assert dataset.label_dir == label_dir
+    assert dataset[0].keypoints.shape == (1, 17, 3)
