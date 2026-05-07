@@ -6,16 +6,16 @@ from pathlib import Path
 
 import torch
 
-from yunet_train.pose import build_yunet_pose
-from yunet_train.pose.coco_eval import COCOPoseEvalDataset, collect_coco_keypoint_predictions, evaluate_coco_keypoints
-from yunet_train.training import load_checkpoint
+from yunet_train.tasks.pose import COCO_PERSON_KEYPOINTS_VAL2017, COCO_VAL2017_IMAGE_DIR, build_yunet_pose
+from yunet_train.tasks.pose.coco_eval import COCOPoseEvalDataset, collect_coco_keypoint_predictions, evaluate_coco_keypoints
+from yunet_train.engine import load_checkpoint
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate YuNet pose with official COCO keypoint AP.")
     parser.add_argument("checkpoint", type=Path)
-    parser.add_argument("--ann-file", type=Path, required=True)
-    parser.add_argument("--image-dir", type=Path, required=True)
+    parser.add_argument("--ann-file", type=Path, default=COCO_PERSON_KEYPOINTS_VAL2017)
+    parser.add_argument("--image-dir", type=Path, default=COCO_VAL2017_IMAGE_DIR)
     parser.add_argument("--variant", choices=("yunet_n", "yunet_s"), default=None)
     parser.add_argument("--image-size", type=int, default=640)
     parser.add_argument("--batch-size", type=int, default=1)

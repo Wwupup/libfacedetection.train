@@ -5,9 +5,9 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from yunet_train.evaluation.widerface import detections_to_widerface, image_eval, norm_score, voc_ap, write_widerface_predictions
-import yunet_train.evaluation.widerface as widerface_eval
-from yunet_train.inference import DetectionResult
+from yunet_train.tasks.face.evaluation import detections_to_widerface, image_eval, norm_score, voc_ap, write_widerface_predictions
+import yunet_train.tasks.face.evaluation as widerface_eval
+from yunet_train.tasks.face import DetectionResult
 
 
 def test_detections_to_widerface_handles_origin_size_without_scale_factor() -> None:

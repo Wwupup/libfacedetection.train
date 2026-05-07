@@ -74,23 +74,10 @@ MODEL_CONFIGS = {
     YUNET_S.variant: YUNET_S,
 }
 
-TRAIN_CROP_CHOICES = {
-    "yunet_n": (0.5, 0.7, 0.9, 1.1, 1.3, 1.5),
-    "yunet_s": (0.3, 0.45, 0.6, 0.8, 1.0),
-}
-
 
 def get_model_config(variant: str) -> YuNetModelConfig:
     try:
         return MODEL_CONFIGS[variant]
     except KeyError as exc:
         names = ", ".join(sorted(MODEL_CONFIGS))
-        raise ValueError(f"Unknown YuNet variant {variant!r}. Expected one of: {names}") from exc
-
-
-def get_train_crop_choice(variant: str) -> tuple[float, ...]:
-    try:
-        return TRAIN_CROP_CHOICES[variant]
-    except KeyError as exc:
-        names = ", ".join(sorted(TRAIN_CROP_CHOICES))
         raise ValueError(f"Unknown YuNet variant {variant!r}. Expected one of: {names}") from exc

@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+
+from yunet_train.tasks.pose import COCO8_POSE_ROOT
 from shutil import rmtree
 
 import numpy as np
 import pytest
 
-from yunet_train.pose import PoseSample, pose_sample_annotation_text, render_pose_sample
+from yunet_train.tasks.pose import PoseSample, pose_sample_annotation_text, render_pose_sample
 from yunet_train.tools.visualize_pose_dataset import visualize_pose_dataset
 
 
 def _coco8_pose_root() -> Path:
-    return Path(__file__).resolve().parents[1] / "data" / "coco8-pose"
+    return COCO8_POSE_ROOT
 
 
 def _sample() -> PoseSample:

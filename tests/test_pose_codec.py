@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from yunet_train.pose.codec import pose_keypoints_decode, pose_keypoints_encode
+from yunet_train.tasks.pose.codec import pose_keypoints_decode, pose_keypoints_encode
 
 
 def test_pose_keypoints_encode_decode_roundtrip_preserves_visibility_logits() -> None:

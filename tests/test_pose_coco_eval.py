@@ -10,9 +10,9 @@ import numpy as np
 import torch
 
 from yunet_train.cli.eval_pose_coco import eval_pose_coco
-from yunet_train.pose import PoseSample, build_yunet_pose
-from yunet_train.pose.coco_eval import _result_to_coco_predictions, evaluate_coco_keypoints
-from yunet_train.pose.postprocess import PoseDetectionResult
+from yunet_train.tasks.pose import PoseSample, build_yunet_pose
+from yunet_train.tasks.pose.coco_eval import _result_to_coco_predictions, evaluate_coco_keypoints
+from yunet_train.tasks.pose.postprocess import PoseDetectionResult
 
 
 OUTPUT_ROOT = Path(__file__).resolve().parent / "output" / "pose_coco_eval"

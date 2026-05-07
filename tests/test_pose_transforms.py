@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from yunet_train.pose import COCO17_FLIP_IDX, Pad, PoseSample, RandomHorizontalFlip, Resize, ToTensor, collate_pose_samples
+from yunet_train.tasks.pose import COCO17_FLIP_IDX, Pad, PoseSample, RandomHorizontalFlip, Resize, ToTensor, collate_pose_samples
 
 
 def _sample() -> PoseSample:

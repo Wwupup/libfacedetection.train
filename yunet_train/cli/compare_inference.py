@@ -12,10 +12,16 @@ import onnx
 import onnxruntime
 from tqdm import tqdm
 
-from yunet_train.data import WIDERFaceDataset
-from yunet_train.evaluation import wider_evaluation, write_widerface_predictions
-from yunet_train.evaluation.widerface import PredictionDict, add_prediction
-from yunet_train.paths import WIDER_VAL_ANN_FILE, WIDER_VAL_IMAGE_DIR, WIDERFACE_ROOT
+from yunet_train.tasks.face import (
+    PredictionDict,
+    WIDERFaceDataset,
+    WIDER_VAL_ANN_FILE,
+    WIDER_VAL_GT_DIR,
+    WIDER_VAL_IMAGE_DIR,
+    add_prediction,
+    wider_evaluation,
+    write_widerface_predictions,
+)
 
 
 class Timer:
@@ -87,7 +93,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--ann-file", type=Path, default=WIDER_VAL_ANN_FILE)
     parser.add_argument("--img-prefix", type=Path, default=WIDER_VAL_IMAGE_DIR)
-    parser.add_argument("--gt-dir", type=Path, default=WIDERFACE_ROOT / "labelv2" / "val" / "gt")
+    parser.add_argument("--gt-dir", type=Path, default=WIDER_VAL_GT_DIR)
     parser.add_argument("--nms-thresh", "--nms_thresh", type=float, default=0.45)
     parser.add_argument("--score-thresh", "--score_thresh", type=float, default=0.02)
     parser.add_argument("--iou-thresh", type=float, default=0.5)

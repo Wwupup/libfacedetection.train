@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import torch
 
-from yunet_train.data import (
+from yunet_train.tasks.face import (
     FaceSample,
     FilterSmallBoxes,
     Pad,
@@ -125,7 +125,7 @@ def test_to_tensor_and_collate_face_samples() -> None:
 
 
 def test_widerface_dataset_loads_image_and_applies_transform(monkeypatch: pytest.MonkeyPatch) -> None:
-    import yunet_train.data.dataset as dataset_module
+    import yunet_train.tasks.face.dataset as dataset_module
 
     def fake_imread(path: str, flags: int) -> np.ndarray:
         normalized = path.replace("\\", "/")

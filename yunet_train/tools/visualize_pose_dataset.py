@@ -6,13 +6,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from yunet_train.pose import COCO17_FLIP_IDX, YOLOPoseDataset, build_pose_eval_transforms, build_pose_train_transforms
-from yunet_train.pose.visualize import pose_sample_annotation_text, render_pose_sample
+from yunet_train.tasks.pose import COCO17_FLIP_IDX, COCO8_POSE_ROOT, YOLOPoseDataset, build_pose_eval_transforms, build_pose_train_transforms
+from yunet_train.tasks.pose.visualize import pose_sample_annotation_text, render_pose_sample
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Visualize YuNet pose training samples after augmentation.")
-    parser.add_argument("--data-root", type=Path, default=Path("data/coco8-pose"))
+    parser.add_argument("--data-root", type=Path, default=COCO8_POSE_ROOT)
     parser.add_argument("--split", default="train", choices=("train", "val"))
     parser.add_argument("--image-size", type=int, default=640)
     parser.add_argument("--epochs", type=int, default=10)

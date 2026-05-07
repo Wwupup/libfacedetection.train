@@ -13,8 +13,9 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from yunet_train.pose import (
+from yunet_train.tasks.pose import (
     COCO17_FLIP_IDX,
+    COCO8_POSE_ROOT,
     YOLOPoseDataset,
     YuNetPoseCriterion,
     build_pose_eval_transforms,
@@ -24,12 +25,12 @@ from yunet_train.pose import (
     evaluate_pose_loss,
     train_pose_one_epoch,
 )
-from yunet_train.training import LinearWarmupMultiStepLR, load_checkpoint, save_checkpoint
+from yunet_train.engine import LinearWarmupMultiStepLR, load_checkpoint, save_checkpoint
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train YuNet pose detector.")
-    parser.add_argument("--data-root", type=Path, default=Path("data/coco8-pose"))
+    parser.add_argument("--data-root", type=Path, default=COCO8_POSE_ROOT)
     parser.add_argument("--variant", default="yunet_n", choices=("yunet_n", "yunet_s"))
     parser.add_argument("--work-dir", type=Path, default=Path("work_dirs/yunet_pose"))
     parser.add_argument("--image-size", type=int, default=640)

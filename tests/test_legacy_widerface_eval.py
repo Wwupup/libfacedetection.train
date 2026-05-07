@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 
 from yunet_train.cli.eval_widerface import run_evaluation
-from yunet_train.paths import WIDER_VAL_ANN_FILE, WIDER_VAL_IMAGE_DIR, WIDERFACE_ROOT
+from yunet_train.tasks.face import WIDER_VAL_ANN_FILE, WIDER_VAL_GT_DIR, WIDER_VAL_IMAGE_DIR
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -16,11 +16,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def test_legacy_yunet_n_checkpoint_runs_widerface_eval_smoke() -> None:
     checkpoint = REPO_ROOT / "weights" / "yunet_n.pth"
-    gt_dir = WIDERFACE_ROOT / "labelv2" / "val" / "gt"
+    gt_dir = WIDER_VAL_GT_DIR
     if not checkpoint.exists():
         pytest.skip(f"legacy checkpoint not found: {checkpoint}")
     if not gt_dir.exists():
         pytest.skip(f"WIDERFace val gt dir not found: {gt_dir}")
+    expected_image = WIDER_VAL_IMAGE_DIR / "0--Parade" / "0_Parade_marchingband_1_465.jpg"
+    if not expected_image.exists():
+        pytest.skip(f"WIDERFace val image not found: {expected_image}")
 
     output_dir = Path(__file__).resolve().parent / "output" / "legacy_yunet_n_widerface_eval"
     if output_dir.exists():

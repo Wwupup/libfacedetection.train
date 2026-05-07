@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import torch
 
-from yunet_train.inference import bbox_decode, kps_decode, kps_encode
-from yunet_train.training import MlvlPointGenerator, SimOTAAssigner, eiou_loss
-from yunet_train.training.losses import bbox_overlaps
+from yunet_train.tasks.face import bbox_decode, kps_decode, kps_encode
+from yunet_train.engine import MlvlPointGenerator, SimOTAAssigner, eiou_loss
+from yunet_train.engine.losses import bbox_overlaps
 
 
 def test_mlvl_point_generator_uses_legacy_offset_zero_order() -> None:

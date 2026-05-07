@@ -8,13 +8,22 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from yunet_train.data import WIDERFaceDataset, build_eval_transforms, collate_face_samples
-from yunet_train.evaluation import detections_to_widerface, wider_evaluation, write_widerface_predictions
-from yunet_train.evaluation.widerface import PredictionDict, add_prediction
-from yunet_train.inference import YuNetPostprocessor
-from yunet_train.models import build_yunet
-from yunet_train.paths import WIDER_VAL_ANN_FILE, WIDER_VAL_IMAGE_DIR, WIDERFACE_ROOT
-from yunet_train.training import move_batch_to_device
+from yunet_train.tasks.face import (
+    PredictionDict,
+    WIDERFaceDataset,
+    WIDER_VAL_ANN_FILE,
+    WIDER_VAL_GT_DIR,
+    WIDER_VAL_IMAGE_DIR,
+    YuNetPostprocessor,
+    add_prediction,
+    build_eval_transforms,
+    build_yunet,
+    collate_face_samples,
+    detections_to_widerface,
+    move_batch_to_device,
+    wider_evaluation,
+    write_widerface_predictions,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -23,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--variant", choices=("yunet_n", "yunet_s"), default=None)
     parser.add_argument("--ann-file", type=Path, default=WIDER_VAL_ANN_FILE)
     parser.add_argument("--img-prefix", type=Path, default=WIDER_VAL_IMAGE_DIR)
-    parser.add_argument("--gt-dir", type=Path, default=WIDERFACE_ROOT / "labelv2" / "val" / "gt")
+    parser.add_argument("--gt-dir", type=Path, default=WIDER_VAL_GT_DIR)
     parser.add_argument("--output-dir", type=Path, default=Path("work_dirs/widerface_eval"))
     parser.add_argument("--mode", choices=("origin", "resize"), default="origin")
     parser.add_argument("--image-size", type=int, default=640)

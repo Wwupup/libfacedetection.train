@@ -7,8 +7,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from yunet_train.models import build_yunet
-from yunet_train.training import load_checkpoint
+from yunet_train.tasks.face import build_yunet
+from yunet_train.engine import load_checkpoint
 
 
 def parse_args() -> argparse.Namespace:

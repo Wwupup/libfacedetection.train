@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from yunet_train.data import parse_labelv2_file
+from yunet_train.tasks.face import parse_labelv2_file
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

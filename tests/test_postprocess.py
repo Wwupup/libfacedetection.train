@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import torch
 
-from yunet_train.inference import YuNetPostprocessor, batched_nms, nms
+from yunet_train.engine import batched_nms, nms
+from yunet_train.tasks.face import YuNetPostprocessor
 
 
 def test_nms_suppresses_overlapping_boxes() -> None:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import torch
 
-from yunet_train.models import build_yunet
+from yunet_train.tasks.face import build_yunet
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

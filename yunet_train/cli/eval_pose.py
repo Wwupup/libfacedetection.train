@@ -8,7 +8,8 @@ import cv2
 import torch
 from torch.utils.data import DataLoader
 
-from yunet_train.pose import (
+from yunet_train.tasks.pose import (
+    COCO8_POSE_ROOT,
     YOLOPoseDataset,
     YuNetPoseCriterion,
     YuNetPosePostprocessor,
@@ -17,14 +18,14 @@ from yunet_train.pose import (
     collate_pose_samples,
     evaluate_pose_loss,
 )
-from yunet_train.pose.visualize import render_pose_sample
-from yunet_train.training import load_checkpoint
+from yunet_train.tasks.pose.visualize import render_pose_sample
+from yunet_train.engine import load_checkpoint
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate a YuNet pose checkpoint on YOLO-pose validation data.")
     parser.add_argument("checkpoint", type=Path)
-    parser.add_argument("--data-root", type=Path, default=Path("data/coco8-pose"))
+    parser.add_argument("--data-root", type=Path, default=COCO8_POSE_ROOT)
     parser.add_argument("--variant", choices=("yunet_n", "yunet_s"), default=None)
     parser.add_argument("--image-size", type=int, default=640)
     parser.add_argument("--batch-size", type=int, default=16)
@@ -101,7 +102,7 @@ def _save_visualizations(args: argparse.Namespace, dataset: YOLOPoseDataset, mod
 
 
 def _prediction_sample(sample, result):
-    from yunet_train.pose import PoseSample
+    from yunet_train.tasks.pose import PoseSample
 
     return PoseSample(
         image=sample.image,

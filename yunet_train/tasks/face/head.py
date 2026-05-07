@@ -3,8 +3,8 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from .init import init_yunet_weights
-from .layers import ConvDPUnit
+from yunet_train.models.init import init_yunet_weights
+from yunet_train.models.layers import ConvDPUnit
 
 
 class YuNetHead(nn.Module):

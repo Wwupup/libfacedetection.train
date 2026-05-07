@@ -15,16 +15,20 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from yunet_train.config import get_train_crop_choice
-from yunet_train.data import WIDERFaceDataset, build_eval_transforms, build_train_transforms, collate_face_samples
-from yunet_train.models import build_yunet
-from yunet_train.paths import WIDER_TRAIN_ANN_FILE, WIDER_TRAIN_IMAGE_DIR, WIDER_VAL_ANN_FILE, WIDER_VAL_IMAGE_DIR
-from yunet_train.training import (
-    LinearWarmupMultiStepLR,
+from yunet_train.engine import LinearWarmupMultiStepLR, load_checkpoint, save_checkpoint
+from yunet_train.tasks.face import (
+    WIDERFaceDataset,
+    WIDER_TRAIN_ANN_FILE,
+    WIDER_TRAIN_IMAGE_DIR,
+    WIDER_VAL_ANN_FILE,
+    WIDER_VAL_IMAGE_DIR,
     YuNetCriterion,
+    build_eval_transforms,
+    build_train_transforms,
+    build_yunet,
+    collate_face_samples,
     evaluate_loss,
-    load_checkpoint,
-    save_checkpoint,
+    get_train_crop_choice,
     train_one_epoch,
 )
 

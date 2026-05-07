@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from yunet_train.pose import YuNetPosePostprocessor
+from yunet_train.tasks.pose import YuNetPosePostprocessor
 
 
 def test_pose_postprocessor_decodes_boxes_scores_and_keypoints() -> None:

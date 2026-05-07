@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 from scipy.io import loadmat
 
-from yunet_train.inference import DetectionResult
+from .postprocess import DetectionResult
 
 PredictionDict = dict[str, dict[str, np.ndarray]]
 

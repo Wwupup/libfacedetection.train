@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from yunet_train.training import LinearWarmupMultiStepLR
+from yunet_train.engine import LinearWarmupMultiStepLR
 
 
 def test_linear_warmup_multi_step_lr_matches_yunet_schedule_shape() -> None:

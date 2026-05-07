@@ -1,91 +1,105 @@
-# Training for libfacedetection in PyTorch
+# YuNet Training in PyTorch
 
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue.svg)](LICENSE)
 
-This repository provides the training program for [libfacedetection](https://github.com/ShiqiYu/libfacedetection). It includes a lightweight PyTorch implementation of YuNet, WIDER Face data loading, training, evaluation, and model export tools for ONNX, C++ source code, and TFLite.
+This repository provides a lightweight PyTorch training pipeline for YuNet-based detection tasks.
 
-The training code is implemented directly with PyTorch and does not require MMDetection or MMCV.
+It includes:
 
-Visualization of the YuNet network architecture: [[netron]](https://netron.app/?url=https://raw.githubusercontent.com/ShiqiYu/libfacedetection.train/master/onnx/yunet_n_320_320.onnx).
+- YuNet face detection training on WIDER Face.
+- YuNet face evaluation and export for ONNX, C++ weights, and TFLite.
+- YuNet pose detection training for YOLO-pose style datasets.
+- Pose validation, COCO keypoint AP evaluation, visualization, and ONNX export.
 
-## Contents
+The code is implemented directly with PyTorch. It does not require MMDetection, MMCV, Ultralytics, or a large detection framework.
 
-- [Installation](#installation)
-- [Preparation](#preparation)
-- [Training](#training)
-- [Evaluation on WIDER Face](#evaluation-on-wider-face)
-- [Export CPP source code](#export-cpp-source-code)
-- [Export to ONNX model](#export-to-onnx-model)
-- [Export to TFLite model](#export-to-tflite-model)
-- [Compare ONNX model with other works](#compare-onnx-model-with-other-works)
-- [Testing](#testing)
-- [Citation](#citation)
+## Why Use This Repository
+
+- Lightweight: small YuNet-style models and direct PyTorch training code.
+- Practical exports: face models can be exported to ONNX, TFLite, and libfacedetection C++ weight data.
+- Multi-task structure: face and pose are separate task implementations sharing the same YuNet backbone, neck, training utilities, assignment, priors, bbox losses, and NMS.
+- Easy to inspect: datasets, transforms, models, losses, training loops, and evaluation code are plain Python modules.
+- CI-friendly: most workflows have CPU smoke tests and small-sample modes.
+- Visualization of the YuNet network architecture: [[netron]](https://netron.app/?url=https://raw.githubusercontent.com/ShiqiYu/libfacedetection.train/master/onnx/yunet_n_320_320.onnx)
+
+## Repository Layout
+
+```text
+yunet_train/
+  engine/        shared training and detection primitives
+  models/        shared YuNet backbone, neck, layers, and initialization
+  tasks/
+    face/        WIDER Face detection task
+    pose/        YOLO-pose / COCO-style keypoint detection task
+  cli/           command-line entry points
+  tools/         dataset checks, visualization, and debugging tools
+
+doc/
+  pose-adaptation-plan.md
+  multitask-refactor-plan.md
+```
 
 ## Installation
 
-1. Create and activate a conda environment.
-
-   ```shell
-   conda create -n yunet python=3.11
-   conda activate yunet
-   ```
-
-2. Install [PyTorch](https://pytorch.org/) following the official instructions for your CUDA version.
-
-   This codebase has been tested with PyTorch 2.11.0 and CUDA 12.6.
-
-3. Clone this repository. We will call the cloned directory `$TRAIN_ROOT`.
-
-   ```shell
-   git clone https://github.com/ShiqiYu/libfacedetection.train.git
-   cd libfacedetection.train
-   ```
-
-4. Install the Python dependencies.
-
-   ```shell
-   python -m pip install -e ".[dev]"
-   ```
-
-If you only want the runtime dependencies without editable package metadata, you can also use:
+Create a Python environment and install PyTorch first. Choose the PyTorch build that matches your CUDA version from the official instructions: https://pytorch.org/.
 
 ```shell
+conda create -n yunet python=3.11
+conda activate yunet
+# Install pytorch. This codebase has been tested with PyTorch 2.11.0 and CUDA 12.6.
+```
+
+Clone and install this repository:
+
+```shell
+git clone https://github.com/ShiqiYu/libfacedetection.train.git
+cd libfacedetection.train
+python -m pip install -e ".[dev]"
+# or
 python -m pip install -r requirements.txt
 ```
 
-Note: neither `pyproject.toml` nor `requirements.txt` installs `torch` or `torchvision`, so pip will not replace the PyTorch package in your conda environment.
+Optional dependencies:
 
-## Preparation
+```shell
+python -m pip install -e ".[pose]"          # COCO keypoint evaluation
+python -m pip install -r requirements-tflite.txt
+```
 
-1. Download the [WIDER Face](http://shuoyang1213.me/WIDERFACE/) dataset.
-2. Extract the dataset under `$TRAIN_ROOT/data/widerface` as follows:
+`torch` is intentionally not pinned by this repository, so installing the package will not replace the PyTorch build in your environment.
 
-   ```shell
-   data/widerface
-   |-- WIDER_train
-   |   `-- images
-   |-- WIDER_val
-   |   `-- images
-   `-- labelv2
-       |-- train
-       |   `-- labelv2.txt
-       `-- val
-           |-- gt
-           `-- labelv2.txt
-   ```
+## Face Detection
 
-The `labelv2` annotations come from [SCRFD](https://github.com/deepinsight/insightface/tree/master/detection/scrfd).
+### Prepare WIDER Face
 
-You can check the dataset layout with:
+Download WIDER Face and place it under `data/widerface`:
+
+```text
+data/widerface
+|-- WIDER_train
+|   `-- images
+|-- WIDER_val
+|   `-- images
+`-- labelv2
+    |-- train
+    |   `-- labelv2.txt
+    `-- val
+        |-- gt
+        `-- labelv2.txt
+```
+
+The `labelv2` annotations come from SCRFD.
+
+Check the dataset:
 
 ```shell
 python -m yunet_train.tools.check_widerface --split train --check-images 10
 python -m yunet_train.tools.check_widerface --split val --check-images 10
 ```
 
-## Training
+### Train Face Detector
 
-Run a short smoke test first:
+CPU smoke test:
 
 ```shell
 python -m yunet_train.cli.train --variant yunet_s --epochs 1 --batch-size 1 --workers 0 --device cpu --image-size 64 --limit-samples 1 --no-tensorboard
@@ -97,15 +111,15 @@ Train YuNet_n:
 python -m yunet_train.cli.train --variant yunet_n --epochs 640 --batch-size 16 --workers 2 --device cuda --checkpoint-interval 80 --eval-interval 100 --work-dir work_dirs/yunet_n
 ```
 
-Resume training from the latest checkpoint:
+Resume training:
 
 ```shell
-python -m yunet_train.cli.train --variant yunet_n --epochs 640 --batch-size 16 --workers 2 --device cuda --checkpoint-interval 80 --eval-interval 100 --resume work_dirs/yunet_n/latest.pth --work-dir work_dirs/yunet_n
+python -m yunet_train.cli.train --variant yunet_n --epochs 640 --batch-size 16 --workers 2 --device cuda --resume work_dirs/yunet_n/latest.pth --work-dir work_dirs/yunet_n
 ```
 
 Useful outputs:
 
-```shell
+```text
 work_dirs/yunet_n/latest.pth
 work_dirs/yunet_n/best_loss.pth
 work_dirs/yunet_n/metrics.csv
@@ -113,24 +127,7 @@ work_dirs/yunet_n/train.log
 work_dirs/yunet_n/tensorboard
 ```
 
-The default schedule follows the original YuNet training setup:
-
-```text
-base lr: 0.01
-warmup: 1500 iterations
-step decay: epoch 400 and epoch 544
-max epochs: 640
-```
-
-TensorBoard can be launched with:
-
-```shell
-tensorboard --logdir work_dirs/yunet_n/tensorboard
-```
-
-## Evaluation on WIDER Face
-
-Evaluate a trained checkpoint on WIDER Face val:
+### Evaluate on WIDER Face
 
 ```shell
 python -m yunet_train.cli.eval_widerface work_dirs/yunet_n/best_loss.pth --variant yunet_n --device cuda --batch-size 1 --workers 4 --output-dir work_dirs/yunet_n_widerface_eval --save-preds
@@ -142,68 +139,30 @@ Evaluate the released YuNet_n checkpoint:
 python -m yunet_train.cli.eval_widerface weights/yunet_n.pth --variant yunet_n --device cuda --batch-size 1 --workers 4 --mode origin --output-dir work_dirs/legacy_yunet_n_eval --save-preds
 ```
 
-Default WIDER Face evaluation settings:
-
-```text
-mode: origin size
-confidence threshold: 0.02
-nms threshold: 0.45
-iou threshold: 0.5
-```
-
-Performance of the released YuNet_n checkpoint on WIDER Face val:
+Released YuNet_n checkpoint on WIDER Face val:
 
 ```text
 AP_easy=0.892, AP_medium=0.883, AP_hard=0.811
 ```
 
-## Export CPP source code
+### Export Face Models
 
-Export C++ weight data for [libfacedetection](https://github.com/ShiqiYu/libfacedetection):
+Export C++ weight data for libfacedetection:
 
 ```shell
 python -m yunet_train.cli.export_cpp work_dirs/yunet_n/best_loss.pth --variant yunet_n --output-file work_dirs/export/facedetectcnn-data.cpp
 ```
 
-The exporter fuses `Conv + BN` and generates the `ConvInfoStruct param_pConvInfo` data used by libfacedetection.
-
-## Export to ONNX model
-
-Export an ONNX model:
-
-```shell
-python -m yunet_train.cli.export_onnx work_dirs/yunet_n/best_loss.pth --variant yunet_n --shape 640 640 --output-file work_dirs/export/yunet_n_640_640.onnx
-```
-
-Export a dynamic-shape ONNX model:
-
-```shell
-python -m yunet_train.cli.export_onnx work_dirs/yunet_n/best_loss.pth --variant yunet_n --dynamic-export --output-file work_dirs/export/yunet_n_dynamic.onnx
-```
-
-Export and verify the ONNX output with ONNX Runtime:
+Export ONNX:
 
 ```shell
 python -m yunet_train.cli.export_onnx work_dirs/yunet_n/best_loss.pth --variant yunet_n --shape 640 640 --verify --output-file work_dirs/export/yunet_n_640_640.onnx
 ```
 
-The ONNX outputs follow the original YuNet order:
-
-```text
-cls_8, cls_16, cls_32
-obj_8, obj_16, obj_32
-bbox_8, bbox_16, bbox_32
-kps_8, kps_16, kps_32
-```
-
-## Export to TFLite model
-
-TFLite export is optional and kept outside the main training dependencies.
-
-Install the optional conversion dependencies:
+Export dynamic-shape ONNX:
 
 ```shell
-python -m pip install -r requirements-tflite.txt
+python -m yunet_train.cli.export_onnx work_dirs/yunet_n/best_loss.pth --variant yunet_n --dynamic-export --output-file work_dirs/export/yunet_n_dynamic.onnx
 ```
 
 Export TFLite:
@@ -212,51 +171,146 @@ Export TFLite:
 python -m yunet_train.cli.export_tflite work_dirs/yunet_n/best_loss.pth --variant yunet_n --shape 640 640 --output-file work_dirs/export/yunet_n_640_640.tflite
 ```
 
-The conversion path is:
+The face ONNX output order follows the original YuNet convention:
 
 ```text
-PyTorch checkpoint -> ONNX -> TFLite
+cls_8, cls_16, cls_32
+obj_8, obj_16, obj_32
+bbox_8, bbox_16, bbox_32
+kps_8, kps_16, kps_32
 ```
 
-## Compare ONNX model with other works
+### Compare ONNX Inference
 
-Inference on exported ONNX models using ONNX Runtime:
+Evaluate an exported ONNX model with ONNX Runtime:
 
 ```shell
 python -m yunet_train.cli.compare_inference work_dirs/export/yunet_n_640_640.onnx --mode AUTO --eval --score-thresh 0.02 --nms-thresh 0.45 --out-dir work_dirs/compare_yunet_n
 ```
 
-Single-image inference and visualization:
+Run single-image inference:
 
 ```shell
 python -m yunet_train.cli.compare_inference work_dirs/export/yunet_n_640_640.onnx --mode AUTO --image image.jpg --out-dir work_dirs/sample
 ```
 
-The compare CLI selects the detector type from the ONNX filename prefix. Supported prefixes are `yunet`, `scrfd`, `yolo5face`, and `retinaface`.
+Supported ONNX filename prefixes are `yunet`, `scrfd`, `yolo5face`, and `retinaface`.
 
-With Intel i7-12700K and `input_size = origin size, score_thresh = 0.02, nms_thresh = 0.45`, reference results are listed as follows:
+## Pose Detection
 
-| Model                   | AP_easy | AP_medium | AP_hard | #Params | Params Ratio | MFlops (320x320) | FPS (320x320) |
-| ----------------------- | ------- | --------- | ------- | ------- | ------------ | ---------------- | ------------- |
-| SCRFD0.5 (ICLR2022)     | 0.892   | 0.885     | 0.819   | 631,410 | 8.32x        | 184              | 284           |
-| Retinaface0.5 (CVPR2020) | 0.907   | 0.883     | 0.742   | 426,608 | 5.62x        | 245              | 235           |
-| YuNet_n (Ours)          | 0.892   | 0.883     | 0.811   | 75,856  | 1.00x        | 149              | 456           |
-| YuNet_s (Ours)          | 0.887   | 0.871     | 0.768   | 54,608  | 0.72x        | 96               | 537           |
+The pose task trains a detection-style YuNet model that predicts person boxes and keypoints in one pass.
 
-The compared models can be downloaded from [Google Drive](https://drive.google.com/drive/folders/1PmnX0LPkQxGali2dvRqABr0VnE8OJ7FA?usp=sharing).
+The initial target is YOLO-pose label format with COCO17 keypoints:
+
+```text
+class cx cy w h x1 y1 v1 x2 y2 v2 ... x17 y17 v17
+```
+
+Coordinates are normalized to image width and height.
+
+### Prepare Pose Data
+
+Default tiny dataset path:
+
+```text
+data/coco8-pose
+|-- images
+|   |-- train
+|   `-- val
+`-- labels
+    |-- train
+    `-- val
+```
+
+For full COCO keypoint AP, install the pose extra and provide a COCO keypoint annotation file:
+
+```shell
+python -m pip install -e ".[pose]"
+```
+
+### Train Pose Detector
+
+CPU smoke test:
+
+```shell
+python -m yunet_train.cli.train_pose --data-root data/coco8-pose --variant yunet_n --epochs 1 --batch-size 1 --workers 0 --device cpu --image-size 160 --limit-samples 2
+```
+
+Train:
+
+```shell
+python -m yunet_train.cli.train_pose --data-root data/coco8-pose --variant yunet_n --epochs 100 --batch-size 16 --workers 4 --device cuda --work-dir work_dirs/yunet_pose_n
+```
+
+Run a tiny overfit check:
+
+```shell
+python -m yunet_train.tools.check_pose_overfit --data-root data/coco8-pose --samples 4 --epochs 120 --image-size 160 --device cpu
+```
+
+Visualize pose data and augmentations:
+
+```shell
+python -m yunet_train.tools.visualize_pose_dataset --data-root data/coco8-pose --split train --out-dir work_dirs/pose_vis
+```
+
+### Evaluate Pose Detector
+
+Validation loss and optional visualizations:
+
+```shell
+python -m yunet_train.cli.eval_pose work_dirs/yunet_pose_n/best_loss.pth --data-root data/coco8-pose --device cuda --save-visualizations 16
+```
+
+COCO keypoint AP:
+
+```shell
+python -m yunet_train.cli.eval_pose_coco work_dirs/yunet_pose_n/best_loss.pth --ann-file data/coco/annotations/person_keypoints_val2017.json --image-dir data/coco/val2017 --device cuda
+```
+
+### Export Pose ONNX
+
+```shell
+python -m yunet_train.cli.export_pose_onnx work_dirs/yunet_pose_n/best_loss.pth --variant yunet_n --shape 640 640 --verify --output-file work_dirs/export/yunet_pose_n.onnx
+```
+
+## Console Commands
+
+After editable installation, these command names are available:
+
+```text
+yunet-train
+yunet-train-pose
+yunet-eval-widerface
+yunet-eval-pose
+yunet-eval-pose-coco
+yunet-export-onnx
+yunet-export-pose-onnx
+yunet-export-cpp
+yunet-export-tflite
+yunet-compare-inference
+yunet-check-widerface
+yunet-check-env
+yunet-visualize-pose
+yunet-check-pose-overfit
+```
+
+The examples above use `python -m ...` because it also works directly from a source checkout.
 
 ## Testing
 
-Run tests and lint checks:
+Run the full test suite:
 
 ```shell
 python -m pytest -q
 python -m ruff check yunet_train tests
 ```
 
+Some tests skip automatically when optional datasets, optional dependencies, or model weights are not available locally.
+
 ## Citation
 
-We published a paper for the main idea of this repository:
+YuNet:
 
 ```text
 @article{yunet,
@@ -270,9 +324,7 @@ We published a paper for the main idea of this repository:
 }
 ```
 
-The paper can be open accessed at https://link.springer.com/article/10.1007/s11633-023-1423-y.
-
-The loss used in training is EIoU. More details can be found in:
+EIoU:
 
 ```text
 @article{eiou,
@@ -286,9 +338,7 @@ The loss used in training is EIoU. More details can be found in:
 }
 ```
 
-The paper can be open accessed at https://ieeexplore.ieee.org/document/9429909.
-
-We also published a paper on face detection to evaluate different methods.
+Face detection survey:
 
 ```text
 @article{facedetect-yu,
@@ -302,5 +352,3 @@ We also published a paper on face detection to evaluate different methods.
   doi={10.1109/TBIOM.2021.3120412}
 }
 ```
-
-The paper can be open accessed at https://ieeexplore.ieee.org/document/9580485.

@@ -5,7 +5,7 @@ import sys
 import pytest
 import torch
 
-from yunet_train.models import build_yunet
+from yunet_train.tasks.face import build_yunet
 
 
 @pytest.mark.parametrize(

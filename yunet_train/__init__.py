@@ -1,6 +1,6 @@
-"""Lightweight YuNet training package."""
+"""Lightweight YuNet face and pose training package."""
 
-from .config import YuNetModelConfig, get_model_config
+from .models.config import YuNetModelConfig, get_model_config
 
 __all__ = ["YuNetModelConfig", "get_model_config"]
 

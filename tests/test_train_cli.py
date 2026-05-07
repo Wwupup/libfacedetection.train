@@ -9,7 +9,7 @@ import pytest
 import torch
 
 import yunet_train.cli.train as train_cli
-from yunet_train.data import FaceSample, ToTensor
+from yunet_train.tasks.face import FaceSample, ToTensor
 
 
 class SyntheticDataset:

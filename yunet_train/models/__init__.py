@@ -1,17 +1,17 @@
 from .backbone import YuNetBackbone
-from .head import YuNetHead
+from .config import MODEL_CONFIGS, YUNET_N, YUNET_S, YuNetModelConfig, get_model_config
 from .layers import Conv4layerBlock, ConvDPUnit, Conv_head
 from .neck import TFPN
-from .yunet import YuNet, build_yunet
 
 __all__ = [
     "ConvDPUnit",
     "Conv_head",
     "Conv4layerBlock",
+    "MODEL_CONFIGS",
+    "YUNET_N",
+    "YUNET_S",
+    "YuNetModelConfig",
+    "get_model_config",
     "YuNetBackbone",
     "TFPN",
-    "YuNetHead",
-    "YuNet",
-    "build_yunet",
 ]
-

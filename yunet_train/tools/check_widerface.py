@@ -3,13 +3,13 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from yunet_train.data import parse_labelv2_file
-from yunet_train.paths import (
+from yunet_train.tasks.face import (
     WIDER_TRAIN_ANN_FILE,
     WIDER_TRAIN_IMAGE_DIR,
     WIDER_VAL_ANN_FILE,
     WIDER_VAL_IMAGE_DIR,
     WIDERFACE_ROOT,
+    parse_labelv2_file,
 )
 
 

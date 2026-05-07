@@ -3,11 +3,12 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from yunet_train.config import YuNetModelConfig, get_model_config
+from yunet_train.models.config import YuNetModelConfig, get_model_config
 
-from .backbone import YuNetBackbone
+from yunet_train.models.backbone import YuNetBackbone
+from yunet_train.models.neck import TFPN
+
 from .head import YuNetHead
-from .neck import TFPN
 
 
 class YuNet(nn.Module):

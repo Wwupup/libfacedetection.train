@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from yunet_train.training import YuNetCriterion
+from yunet_train.tasks.face import YuNetCriterion
 
 
 def _single_level_preds() -> tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]]:

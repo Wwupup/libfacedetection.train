@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from yunet_train.pose import YuNetPoseCriterion, keypoint_visibility_loss, oks_keypoint_loss
+from yunet_train.tasks.pose import YuNetPoseCriterion, keypoint_visibility_loss, oks_keypoint_loss
 
 
 def test_oks_keypoint_loss_is_zero_for_perfect_visible_points() -> None:

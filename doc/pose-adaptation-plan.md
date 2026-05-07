@@ -6,7 +6,7 @@ This document is the implementation plan for adding a human pose detection task 
 
 Current implementation status:
 
-- Added `yunet_train.pose` as an isolated pose namespace.
+- Added `yunet_train.tasks.pose` as the pose task namespace.
 - Added YOLO pose dataset parsing for `data/coco8-pose`.
 - Added pose dataclasses, collate, resize/pad/flip/normalize/tensor transforms.
 - Added COCO17 flip index and OKS sigmas.

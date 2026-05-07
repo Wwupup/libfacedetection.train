@@ -8,9 +8,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from yunet_train.config import get_train_crop_choice
-from yunet_train.data import WIDERFaceDataset, build_train_transforms, collate_face_samples
-from yunet_train.paths import WIDER_TRAIN_ANN_FILE, WIDER_TRAIN_IMAGE_DIR
+from yunet_train.tasks.face import get_train_crop_choice
+from yunet_train.tasks.face import WIDERFaceDataset, WIDER_TRAIN_ANN_FILE, WIDER_TRAIN_IMAGE_DIR, build_train_transforms, collate_face_samples
 
 KEYPOINT_COLORS = (
     (255, 96, 0),

@@ -8,7 +8,7 @@ import onnx
 import torch
 
 from yunet_train.cli.export_pose_onnx import export_pose_onnx
-from yunet_train.pose import build_yunet_pose
+from yunet_train.tasks.pose import build_yunet_pose
 
 
 OUTPUT_ROOT = Path(__file__).resolve().parent / "output" / "export_pose_cli"

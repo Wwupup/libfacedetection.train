@@ -5,14 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "yunet-train"
 version = "0.1.0"
-description = "Lightweight PyTorch training pipeline for YuNet face detection."
+description = "Lightweight PyTorch training pipeline for YuNet face and pose detection."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "BSD-3-Clause"
 authors = [
     { name = "Shiqi Yu", email = "shiqi.yu@gmail.com" },
 ]
-keywords = ["face-detection", "yunet", "widerface", "pytorch", "onnx"]
+keywords = ["face-detection", "pose-detection", "keypoints", "yunet", "widerface", "pytorch", "onnx"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",

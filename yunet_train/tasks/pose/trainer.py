@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Protocol
+from typing import Protocol
 
 import torch
 from torch.utils.data import DataLoader
+
+from yunet_train.engine.loop import LRScheduler, evaluate_loss_epoch, train_loss_epoch
 
 from .types import PoseBatch
 
@@ -21,9 +24,7 @@ class PoseCriterion(Protocol):
         ...
 
 
-class LRScheduler(Protocol):
-    def step(self, *, epoch: int) -> list[float]:
-        ...
+LOSS_NAMES = ("loss_cls", "loss_bbox", "loss_obj", "loss_kpt", "loss_kpt_vis")
 
 
 @dataclass(frozen=True)
@@ -60,38 +61,24 @@ def train_pose_one_epoch(
     log_interval: int = 0,
     logger: Callable[[str], None] | None = None,
 ) -> PoseTrainStats:
-    model.train()
-    totals = _empty_totals()
-    steps = 0
-
-    for batch in data_loader:
-        if lr_scheduler is not None:
-            lr_scheduler.step(epoch=epoch)
-        batch = move_pose_batch_to_device(batch, device)
-        optimizer.zero_grad(set_to_none=True)
-        losses = criterion(
-            model(batch.images),
-            boxes=batch.boxes,
-            labels=batch.labels,
-            keypoints=batch.keypoints,
-        )
-        loss = sum(losses.values())
-        loss.backward()
-        if grad_clip_norm is not None:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
-        optimizer.step()
-
-        steps += 1
-        _accumulate(totals, losses, loss)
-        if log_interval > 0 and logger is not None and (steps == 1 or steps % log_interval == 0):
-            logger(_format_step("train", epoch, steps, len(data_loader), totals))
-
-    if steps == 0:
-        raise ValueError("data_loader yielded no batches")
+    totals, steps = train_loss_epoch(
+        model=model,
+        data_loader=data_loader,
+        optimizer=optimizer,
+        move_batch=move_pose_batch_to_device,
+        compute_losses=lambda model, batch: _compute_losses(model, criterion, batch),
+        loss_names=LOSS_NAMES,
+        device=device,
+        epoch=epoch,
+        lr_scheduler=lr_scheduler,
+        grad_clip_norm=grad_clip_norm,
+        log_interval=log_interval,
+        logger=logger,
+        format_log=_format_step,
+    )
     return _stats_from_totals(totals, steps)
 
 
-@torch.no_grad()
 def evaluate_pose_loss(
     *,
     model: torch.nn.Module,
@@ -99,41 +86,24 @@ def evaluate_pose_loss(
     data_loader: DataLoader,
     device: torch.device | str,
 ) -> PoseTrainStats:
-    model.eval()
-    totals = _empty_totals()
-    steps = 0
-    for batch in data_loader:
-        batch = move_pose_batch_to_device(batch, device)
-        losses = criterion(
-            model(batch.images),
-            boxes=batch.boxes,
-            labels=batch.labels,
-            keypoints=batch.keypoints,
-        )
-        loss = sum(losses.values())
-        steps += 1
-        _accumulate(totals, losses, loss)
-
-    if steps == 0:
-        raise ValueError("data_loader yielded no batches")
+    totals, steps = evaluate_loss_epoch(
+        model=model,
+        data_loader=data_loader,
+        move_batch=move_pose_batch_to_device,
+        compute_losses=lambda model, batch: _compute_losses(model, criterion, batch),
+        loss_names=LOSS_NAMES,
+        device=device,
+    )
     return _stats_from_totals(totals, steps)
 
 
-def _empty_totals() -> dict[str, float]:
-    return {
-        "loss": 0.0,
-        "loss_cls": 0.0,
-        "loss_bbox": 0.0,
-        "loss_obj": 0.0,
-        "loss_kpt": 0.0,
-        "loss_kpt_vis": 0.0,
-    }
-
-
-def _accumulate(totals: dict[str, float], losses: dict[str, torch.Tensor], loss: torch.Tensor) -> None:
-    totals["loss"] += float(loss.detach().cpu())
-    for name in ("loss_cls", "loss_bbox", "loss_obj", "loss_kpt", "loss_kpt_vis"):
-        totals[name] += float(losses[name].detach().cpu())
+def _compute_losses(model: torch.nn.Module, criterion: PoseCriterion, batch: PoseBatch) -> dict[str, torch.Tensor]:
+    return criterion(
+        model(batch.images),
+        boxes=batch.boxes,
+        labels=batch.labels,
+        keypoints=batch.keypoints,
+    )
 
 
 def _stats_from_totals(totals: dict[str, float], steps: int) -> PoseTrainStats:
@@ -148,9 +118,9 @@ def _stats_from_totals(totals: dict[str, float], steps: int) -> PoseTrainStats:
     )
 
 
-def _format_step(prefix: str, epoch: int, steps: int, total_steps: int, totals: dict[str, float]) -> str:
+def _format_step(epoch: int, steps: int, total_steps: int, totals: dict[str, float]) -> str:
     return (
-        f"{prefix} epoch={epoch} "
+        f"train epoch={epoch} "
         f"step={steps}/{total_steps} "
         f"loss={totals['loss'] / steps:.6f} "
         f"cls={totals['loss_cls'] / steps:.6f} "

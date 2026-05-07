@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import torch
 
-from yunet_train.pose import build_yunet_pose
+from yunet_train.tasks.pose import build_yunet_pose
 
 
 def test_yunet_pose_forward_shapes() -> None:

@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 from torch.utils.data import Dataset
 
+from .paths import COCO8_POSE_ROOT
 from .types import PoseRecord, PoseSample
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -15,7 +16,7 @@ IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 class YOLOPoseDataset(Dataset):
     def __init__(
         self,
-        root: str | Path = "data/coco8-pose",
+        root: str | Path = COCO8_POSE_ROOT,
         *,
         split: str = "train",
         transform: Callable[[PoseSample], PoseSample] | None = None,

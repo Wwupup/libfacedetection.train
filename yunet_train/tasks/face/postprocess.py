@@ -4,33 +4,30 @@ from dataclasses import dataclass
 
 import torch
 
-from yunet_train.inference.codec import bbox_decode
-from yunet_train.inference.postprocess import batched_nms
-from yunet_train.training.priors import MlvlPointGenerator
+from yunet_train.engine.nms import batched_nms
+from yunet_train.engine.priors import MlvlPointGenerator
 
-from .codec import pose_keypoints_decode
+from .codec import bbox_decode, kps_decode
 
 
 @dataclass(frozen=True)
-class PoseDetectionResult:
+class DetectionResult:
     boxes: torch.Tensor
     scores: torch.Tensor
     labels: torch.Tensor
     keypoints: torch.Tensor
 
 
-class YuNetPosePostprocessor:
+class YuNetPostprocessor:
     def __init__(
         self,
         *,
         strides: tuple[int, ...] = (8, 16, 32),
-        kpt_shape: tuple[int, int] = (17, 3),
-        score_threshold: float = 0.25,
+        score_threshold: float = 0.02,
         nms_threshold: float = 0.45,
-        max_detections: int = 300,
+        max_detections: int = -1,
     ):
         self.prior_generator = MlvlPointGenerator(strides=strides, offset=0)
-        self.kpt_shape = kpt_shape
         self.score_threshold = score_threshold
         self.nms_threshold = nms_threshold
         self.max_detections = max_detections
@@ -39,8 +36,8 @@ class YuNetPosePostprocessor:
     def __call__(
         self,
         preds: tuple[list[torch.Tensor], list[torch.Tensor], list[torch.Tensor], list[torch.Tensor]],
-    ) -> list[PoseDetectionResult]:
-        cls_scores, bbox_preds, objectnesses, kpt_preds = preds
+    ) -> list[DetectionResult]:
+        cls_scores, bbox_preds, objectnesses, kps_preds = preds
         num_imgs = cls_scores[0].shape[0]
         featmap_sizes = [tuple(cls_score.shape[2:]) for cls_score in cls_scores]
         priors = self.prior_generator.grid_priors(
@@ -53,13 +50,11 @@ class YuNetPosePostprocessor:
         flatten_cls_scores = _flatten_preds(cls_scores, num_imgs, cls_scores[0].shape[1]).sigmoid()
         flatten_bbox_preds = _flatten_preds(bbox_preds, num_imgs, 4)
         flatten_objectness = _flatten_preds(objectnesses, num_imgs, 1).squeeze(-1).sigmoid()
-        flatten_kpt_preds = _flatten_preds(kpt_preds, num_imgs, kpt_preds[0].shape[1])
+        flatten_kps_preds = _flatten_preds(kps_preds, num_imgs, kps_preds[0].shape[1])
 
         expanded_priors = flatten_priors.unsqueeze(0).repeat(num_imgs, 1, 1)
         decoded_boxes = bbox_decode(expanded_priors, flatten_bbox_preds)
-        decoded_keypoints = pose_keypoints_decode(expanded_priors, flatten_kpt_preds, kpt_shape=self.kpt_shape)
-        if self.kpt_shape[1] >= 3:
-            decoded_keypoints[..., 2] = decoded_keypoints[..., 2].sigmoid()
+        decoded_keypoints = kps_decode(expanded_priors, flatten_kps_preds)
 
         results = []
         for img_idx in range(num_imgs):
@@ -76,7 +71,7 @@ class YuNetPosePostprocessor:
             if self.max_detections > 0:
                 keep_indices = keep_indices[: self.max_detections]
             results.append(
-                PoseDetectionResult(
+                DetectionResult(
                     boxes=boxes[keep_indices],
                     scores=scores[keep_indices],
                     labels=labels[keep_indices],
@@ -87,5 +82,8 @@ class YuNetPosePostprocessor:
 
 
 def _flatten_preds(preds: list[torch.Tensor], num_imgs: int, channels: int) -> torch.Tensor:
-    flattened = [pred.permute(0, 2, 3, 1).reshape(num_imgs, -1, channels) for pred in preds]
+    flattened = [
+        pred.permute(0, 2, 3, 1).reshape(num_imgs, -1, channels)
+        for pred in preds
+    ]
     return torch.cat(flattened, dim=1)

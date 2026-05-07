@@ -2,17 +2,19 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+
+from yunet_train.tasks.pose import COCO8_POSE_ROOT
 from shutil import rmtree
 
 import pytest
 import torch
 
 from yunet_train.cli.eval_pose import eval_pose
-from yunet_train.pose import build_yunet_pose
+from yunet_train.tasks.pose import build_yunet_pose
 
 
 def _coco8_pose_root() -> Path:
-    return Path(__file__).resolve().parents[1] / "data" / "coco8-pose"
+    return COCO8_POSE_ROOT
 
 
 @pytest.mark.skipif(not _coco8_pose_root().exists(), reason="data/coco8-pose is not available")
