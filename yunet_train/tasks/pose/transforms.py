@@ -63,6 +63,98 @@ class Resize:
         return sample
 
 
+class RandomSquareCrop:
+    """Random square crop (face-style): keeps instances whose box center falls inside the crop."""
+
+    def __init__(
+        self,
+        *,
+        crop_ratio_range: tuple[float, float] | None = None,
+        crop_choice: Sequence[float] | None = None,
+        clip_border: bool = True,
+        pad_value: float = 114,
+    ):
+        if (crop_ratio_range is None) == (crop_choice is None):
+            raise ValueError("exactly one of crop_ratio_range or crop_choice must be set")
+        self.crop_ratio_range = crop_ratio_range
+        self.crop_choice = tuple(crop_choice) if crop_choice is not None else None
+        self.clip_border = clip_border
+        self.pad_value = pad_value
+
+    def __call__(self, sample: PoseSample) -> PoseSample:
+        image = _ensure_numpy_image(sample.image)
+        boxes = _ensure_numpy_array(sample.boxes)
+        if boxes.shape[0] == 0:
+            return sample
+
+        height, width = image.shape[:2]
+        scale_retry = 0
+        max_scale = self.crop_ratio_range[1] if self.crop_ratio_range is not None else max(self.crop_choice)
+        scale = None
+
+        while True:
+            scale_retry += 1
+            if scale_retry == 1 or max_scale > 1.0:
+                if self.crop_ratio_range is not None:
+                    scale = np.random.uniform(*self.crop_ratio_range)
+                else:
+                    scale = np.random.choice(self.crop_choice)
+            else:
+                scale = float(scale) * 1.2
+
+            for _ in range(250):
+                crop_w = int(scale * min(width, height))
+                crop_h = crop_w
+
+                if width == crop_w:
+                    left = 0
+                elif width > crop_w:
+                    left = np.random.randint(0, width - crop_w)
+                else:
+                    left = np.random.randint(width - crop_w, 0)
+
+                if height == crop_h:
+                    top = 0
+                elif height > crop_h:
+                    top = np.random.randint(0, height - crop_h)
+                else:
+                    top = np.random.randint(height - crop_h, 0)
+
+                patch = np.array((left, top, left + crop_w, top + crop_h), dtype=np.int64)
+                keep = _centers_in_patch(boxes, patch)
+                if not keep.any():
+                    continue
+
+                sample.boxes = _crop_boxes_after_patch(boxes, patch, keep, self.clip_border)
+                sample.labels = _ensure_numpy_array(sample.labels)[keep]
+                sample.keypoints = _crop_keypoints_after_patch(_ensure_numpy_array(sample.keypoints), patch, keep)
+
+                sample.image = _crop_image_with_padding_pose(image, patch, crop_h, crop_w, self.pad_value)
+                sample.image_shape = sample.image.shape
+                sample.pad_shape = sample.image.shape
+                return sample
+
+
+class FilterSmallBoxes:
+    def __init__(self, min_size: float):
+        if min_size < 0:
+            raise ValueError("min_size must be non-negative")
+        self.min_size = min_size
+
+    def __call__(self, sample: PoseSample) -> PoseSample:
+        if self.min_size <= 0:
+            return sample
+        boxes = _ensure_numpy_array(sample.boxes)
+        keep = _box_size_mask(boxes, self.min_size)
+        sample.boxes = boxes[keep].reshape(-1, 4)
+        sample.labels = _ensure_numpy_array(sample.labels)[keep]
+        kpt = _ensure_numpy_array(sample.keypoints)
+        num_kpt = kpt.shape[1] if kpt.ndim == 3 else sample.kpt_shape[0]
+        last = kpt.shape[-1] if kpt.ndim == 3 else 3
+        sample.keypoints = kpt[keep].reshape(-1, num_kpt, last)
+        return sample
+
+
 class RandomHorizontalFlip:
     def __init__(
         self,
@@ -158,16 +250,25 @@ def build_pose_train_transforms(
     image_size: int = 640,
     *,
     flip_idx: Sequence[int] = COCO17_FLIP_IDX,
+    random_crop: bool = True,
+    crop_choice: Sequence[float] = (0.5, 0.7, 0.9, 1.1, 1.3, 1.5),
+    min_box_size: float = 10.0,
+    crop_pad_value: float = 114,
 ) -> Compose:
-    return Compose(
-        (
+    blocks: list[Callable[[PoseSample], PoseSample]] = []
+    if random_crop:
+        blocks.append(RandomSquareCrop(crop_choice=tuple(crop_choice), pad_value=crop_pad_value))
+    blocks.extend(
+        [
             Resize((image_size, image_size), keep_ratio=True),
             Pad(size=(image_size, image_size), pad_value=114),
+            FilterSmallBoxes(min_size=min_box_size),
             RandomHorizontalFlip(0.5, flip_idx=flip_idx),
             Normalize(mean=(0.0, 0.0, 0.0), std=(1.0, 1.0, 1.0), to_rgb=False),
             ToTensor(),
-        )
+        ]
     )
+    return Compose(tuple(blocks))
 
 
 def build_pose_eval_transforms(image_size: int = 640) -> Compose:
@@ -249,3 +350,95 @@ def _flip_keypoints(keypoints: np.ndarray, width: int, flip_idx: Sequence[int]) 
     flipped = keypoints[:, flip_idx, :].copy()
     flipped[..., 0] = width - flipped[..., 0]
     return flipped
+
+
+def _centers_in_patch(boxes: np.ndarray, patch: np.ndarray) -> np.ndarray:
+    if boxes.shape[0] == 0:
+        return np.zeros((0,), dtype=bool)
+    centers = (boxes[:, :2] + boxes[:, 2:]) / 2
+    return (
+        (centers[:, 0] > patch[0])
+        & (centers[:, 1] > patch[1])
+        & (centers[:, 0] < patch[2])
+        & (centers[:, 1] < patch[3])
+    )
+
+
+def _crop_boxes_after_patch(boxes: np.ndarray, patch: np.ndarray, keep: np.ndarray, clip: bool) -> np.ndarray:
+    boxes = boxes.astype(np.float32, copy=True)[keep]
+    if boxes.size == 0:
+        return boxes.reshape(0, 4)
+    if clip:
+        boxes[:, 2:] = boxes[:, 2:].clip(max=patch[2:])
+        boxes[:, :2] = boxes[:, :2].clip(min=patch[:2])
+    boxes -= np.tile(patch[:2], 2)
+    return boxes
+
+
+def _crop_keypoints_after_patch(
+    keypoints: np.ndarray,
+    patch: np.ndarray,
+    keep: np.ndarray,
+) -> np.ndarray:
+    keypoints = keypoints.astype(np.float32, copy=True)[keep]
+    if keypoints.size == 0:
+        nk = keypoints.shape[1] if keypoints.ndim >= 2 else 17
+        return keypoints.reshape(0, nk, 3)
+    pl, pt, pr, pb = float(patch[0]), float(patch[1]), float(patch[2]), float(patch[3])
+    for i in range(keypoints.shape[0]):
+        for j in range(keypoints.shape[1]):
+            x = float(keypoints[i, j, 0])
+            y = float(keypoints[i, j, 1])
+            vis = float(keypoints[i, j, 2])
+            if vis <= 0:
+                keypoints[i, j, 0] = 0.0
+                keypoints[i, j, 1] = 0.0
+                continue
+            if x < pl or x > pr or y < pt or y > pb:
+                keypoints[i, j, 0] = 0.0
+                keypoints[i, j, 1] = 0.0
+                keypoints[i, j, 2] = 0.0
+            else:
+                keypoints[i, j, 0] = x - pl
+                keypoints[i, j, 1] = y - pt
+    return keypoints
+
+
+def _crop_image_with_padding_pose(
+    image: np.ndarray,
+    patch: np.ndarray,
+    crop_h: int,
+    crop_w: int,
+    pad_value: float,
+) -> np.ndarray:
+    if image.dtype == np.uint8:
+        fill: int | float = int(round(np.clip(pad_value, 0, 255)))
+    else:
+        fill = pad_value
+    cropped = np.full((crop_h, crop_w, image.shape[2]), fill, dtype=image.dtype)
+    patch_from = patch.copy()
+    patch_from[0] = max(0, patch_from[0])
+    patch_from[1] = max(0, patch_from[1])
+    patch_from[2] = min(image.shape[1], patch_from[2])
+    patch_from[3] = min(image.shape[0], patch_from[3])
+
+    patch_to = patch.copy()
+    patch_to[0] = max(0, patch_to[0] * -1)
+    patch_to[1] = max(0, patch_to[1] * -1)
+    patch_to[2] = patch_to[0] + (patch_from[2] - patch_from[0])
+    patch_to[3] = patch_to[1] + (patch_from[3] - patch_from[1])
+
+    cropped[patch_to[1] : patch_to[3], patch_to[0] : patch_to[2], :] = image[
+        patch_from[1] : patch_from[3],
+        patch_from[0] : patch_from[2],
+        :,
+    ]
+    return cropped
+
+
+def _box_size_mask(boxes: np.ndarray, min_size: float) -> np.ndarray:
+    if boxes.shape[0] == 0:
+        return np.zeros((0,), dtype=bool)
+    widths = boxes[:, 2] - boxes[:, 0]
+    heights = boxes[:, 3] - boxes[:, 1]
+    return (widths >= min_size) & (heights >= min_size)

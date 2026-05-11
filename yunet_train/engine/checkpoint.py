@@ -6,6 +6,19 @@ from typing import Any
 import torch
 
 
+def load_model_weights_only(
+    path: str | Path,
+    *,
+    model: torch.nn.Module,
+    map_location: str | torch.device = "cpu",
+) -> dict[str, Any]:
+    """Load model weights from a training checkpoint without optimizer or scheduler state."""
+    checkpoint = torch.load(Path(path), map_location=map_location)
+    state_dict = checkpoint.get("state_dict", checkpoint)
+    model.load_state_dict(_clean_state_dict(state_dict), strict=True)
+    return checkpoint
+
+
 def load_checkpoint(
     path: str | Path,
     *,

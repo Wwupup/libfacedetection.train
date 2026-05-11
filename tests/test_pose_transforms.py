@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from yunet_train.tasks.pose import COCO17_FLIP_IDX, Pad, PoseSample, RandomHorizontalFlip, Resize, ToTensor, collate_pose_samples
+from yunet_train.tasks.pose import COCO17_FLIP_IDX, Pad, PoseSample, RandomHorizontalFlip, RandomSquareCrop, Resize, ToTensor, collate_pose_samples
 
 
 def _sample() -> PoseSample:
@@ -26,6 +26,23 @@ def _sample() -> PoseSample:
         pad_shape=image.shape,
         kpt_shape=(17, 3),
     )
+
+
+def test_random_square_crop_zeros_keypoints_outside_patch() -> None:
+    np.random.seed(0)
+    sample = RandomSquareCrop(crop_choice=(1.0,))(_sample())
+    assert sample.image.shape[0] == sample.image.shape[1]
+    assert sample.boxes.shape[0] == 1
+    assert (sample.keypoints[..., 2] >= 0).all()
+
+
+def test_pose_train_compose_without_random_crop_matches_resize_first() -> None:
+    from yunet_train.tasks.pose.transforms import build_pose_train_transforms
+
+    sample = _sample()
+    out = build_pose_train_transforms(40, random_crop=False)(sample)
+    assert out.image.shape == (3, 40, 40)
+    assert out.boxes.shape == (1, 4)
 
 
 def test_pose_resize_scales_boxes_and_keypoints_and_masks_outside_points() -> None:

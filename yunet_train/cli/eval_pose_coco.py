@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import logging
+import sys
+import time
 from pathlib import Path
 
 import torch
@@ -9,6 +12,8 @@ import torch
 from yunet_train.tasks.pose import COCO_PERSON_KEYPOINTS_VAL2017, COCO_VAL_IMAGE_DIR, build_yunet_pose
 from yunet_train.tasks.pose.coco_eval import COCOPoseEvalDataset, collect_coco_keypoint_predictions, evaluate_coco_keypoints
 from yunet_train.engine import load_checkpoint
+
+_LOG = logging.getLogger(__name__)
 
 
 def parse_args() -> argparse.Namespace:
@@ -31,15 +36,46 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    result = eval_pose_coco(parse_args())
+    args = parse_args()
+    _configure_logging(args.out_dir)
+    _LOG.info(
+        "eval_pose_coco started checkpoint=%s device=%s ann_file=%s image_dir=%s",
+        args.checkpoint.resolve(),
+        args.device,
+        args.ann_file.resolve(),
+        args.image_dir.resolve(),
+    )
+    _LOG.info(
+        "options variant=%s image_size=%s batch_size=%s workers=%s limit_samples=%s "
+        "score_threshold=%s nms_threshold=%s max_detections=%s",
+        args.variant,
+        args.image_size,
+        args.batch_size,
+        args.workers,
+        args.limit_samples,
+        args.score_threshold,
+        args.nms_threshold,
+        args.max_detections,
+    )
+    started = time.perf_counter()
+    result = eval_pose_coco(args)
+    elapsed = time.perf_counter() - started
     metrics = " ".join(f"{key}={value:.6f}" for key, value in result.metrics.items())
-    print(f"COCO keypoint AP {metrics}")
+    _LOG.info("COCO keypoint AP %s", metrics)
+    _LOG.info("eval_pose_coco finished in %.2f s (predictions=%s)", elapsed, result.num_predictions)
 
 
 def eval_pose_coco(args: argparse.Namespace):
     args.out_dir.mkdir(parents=True, exist_ok=True)
+    if not args.ann_file.is_file():
+        raise FileNotFoundError(f"Annotation file not found: {args.ann_file.resolve()}")
+    if not args.image_dir.is_dir():
+        raise FileNotFoundError(f"Image directory not found: {args.image_dir.resolve()}")
+
+    _LOG.info("Loading checkpoint %s", args.checkpoint.resolve())
     checkpoint = torch.load(args.checkpoint, map_location="cpu")
     variant = args.variant or checkpoint.get("config", {}).get("variant", "yunet_n")
+    _LOG.info("Building model variant=%s", variant)
     device = torch.device(args.device)
     model = build_yunet_pose(variant, kpt_shape=(17, 3))
     load_checkpoint(args.checkpoint, model=model, map_location="cpu")
@@ -51,6 +87,14 @@ def eval_pose_coco(args: argparse.Namespace):
         image_size=args.image_size,
         limit_samples=args.limit_samples,
     )
+    n_images = len(dataset)
+    _LOG.info("COCO val images to run: %s", n_images)
+    if n_images == 0:
+        _LOG.warning(
+            "Dataset is empty. Check that %s lists images and that --limit-samples is not 0.",
+            args.ann_file,
+        )
+
     predictions = collect_coco_keypoint_predictions(
         model=model,
         dataset=dataset,
@@ -62,13 +106,33 @@ def eval_pose_coco(args: argparse.Namespace):
         max_detections=args.max_detections,
         category_id=args.category_id,
     )
+    _LOG.info("Collected %s raw detection records for COCOeval", len(predictions))
+
+    results_path = args.out_dir / "pose_coco_results.json"
+    metrics_path = args.out_dir / "pose_coco_metrics.csv"
     result = evaluate_coco_keypoints(
         ann_file=args.ann_file,
         predictions=predictions,
-        results_file=args.out_dir / "pose_coco_results.json",
+        results_file=results_path,
     )
-    _write_metrics(args.out_dir / "pose_coco_metrics.csv", result.metrics, result.num_predictions)
+    _write_metrics(metrics_path, result.metrics, result.num_predictions)
+    _LOG.info("Wrote metrics %s", metrics_path.resolve())
     return result
+
+
+def _configure_logging(out_dir: Path) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    log_path = out_dir / "eval_pose_coco.log"
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+    stream = logging.StreamHandler(sys.stdout)
+    stream.setFormatter(fmt)
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setFormatter(fmt)
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.setLevel(logging.INFO)
+    root.addHandler(stream)
+    root.addHandler(file_handler)
 
 
 def _write_metrics(path: Path, metrics: dict[str, float], num_predictions: int) -> None:

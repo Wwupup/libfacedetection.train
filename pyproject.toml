@@ -62,6 +62,7 @@ yunet-compare-inference = "yunet_train.cli.compare_inference:main"
 yunet-check-widerface = "yunet_train.tools.check_widerface:main"
 yunet-check-env = "yunet_train.tools.check_env:main"
 yunet-visualize-pose = "yunet_train.tools.visualize_pose_dataset:main"
+yunet-visualize-pose-image = "yunet_train.tools.visualize_pose_image:main"
 yunet-check-pose-overfit = "yunet_train.tools.check_pose_overfit:main"
 
 [tool.setuptools.packages.find]

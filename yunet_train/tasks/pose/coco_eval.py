@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,6 +16,7 @@ from .postprocess import PoseDetectionResult, YuNetPosePostprocessor
 from .transforms import build_pose_eval_transforms
 from .types import PoseSample
 
+_LOGGER = logging.getLogger(__name__)
 
 COCO_KEYPOINT_METRIC_NAMES: tuple[str, ...] = (
     "AP",
@@ -117,12 +120,34 @@ def collect_coco_keypoint_predictions(
         kpt_shape=(17, 3),
     )
     model.eval()
+    num_batches = len(loader)
+    num_images = len(dataset)
+    _LOGGER.info(
+        "Inference: images=%s batch_size=%s batches=%s device=%s",
+        num_images,
+        batch_size,
+        num_batches,
+        device,
+    )
+    log_every = max(1, num_batches // 10) if num_batches > 10 else max(1, num_batches)
     predictions: list[dict[str, Any]] = []
-    for batch in loader:
+    infer_started = time.perf_counter()
+    if num_batches == 0:
+        _LOGGER.warning("DataLoader has zero batches; skipping inference.")
+    for batch_idx, batch in enumerate(loader):
         images = batch.images.to(device, non_blocking=True)
         results = postprocessor(model(images))
         for image_id, sample, result in zip(batch.image_ids, batch.samples, results):
             predictions.extend(_result_to_coco_predictions(image_id, sample, result, category_id=category_id))
+        done = batch_idx + 1
+        if done == 1 or done == num_batches or done % log_every == 0:
+            _LOGGER.info(
+                "Inference progress: batch %s/%s (elapsed %.1fs)",
+                done,
+                num_batches,
+                time.perf_counter() - infer_started,
+            )
+    _LOGGER.info("Inference done in %.2fs, total detection records=%s", time.perf_counter() - infer_started, len(predictions))
     return predictions
 
 
@@ -143,8 +168,13 @@ def evaluate_coco_keypoints(
 ) -> CocoKeypointEvalResult:
     results_path = Path(results_file)
     results_path.parent.mkdir(parents=True, exist_ok=True)
+    _LOGGER.info("Writing COCO detection JSON (%s entries) -> %s", len(predictions), results_path.resolve())
     results_path.write_text(json.dumps(predictions), encoding="utf-8")
     if not predictions:
+        _LOGGER.warning(
+            "No predictions produced (empty results). COCO AP/AR will be zero. "
+            "Check score threshold, data paths, and that the dataset is not empty."
+        )
         stats = np.zeros((len(COCO_KEYPOINT_METRIC_NAMES),), dtype=np.float32)
         return CocoKeypointEvalResult(
             stats=stats,
@@ -162,12 +192,15 @@ def evaluate_coco_keypoints(
             "Install it with `python -m pip install -r requirements-pose.txt`."
         ) from exc
 
+    _LOGGER.info("Running official COCO keypoint evaluation (pycocotools COCOeval)...")
+    eval_started = time.perf_counter()
     coco_gt = COCO(str(ann_file))
     coco_dt = coco_gt.loadRes(str(results_path))
     coco_eval = COCOeval(coco_gt, coco_dt, "keypoints")
     coco_eval.evaluate()
     coco_eval.accumulate()
     coco_eval.summarize()
+    _LOGGER.info("COCOeval finished in %.2fs", time.perf_counter() - eval_started)
     stats = np.array(coco_eval.stats, dtype=np.float32)
     return CocoKeypointEvalResult(
         stats=stats,

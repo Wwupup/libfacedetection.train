@@ -151,7 +151,7 @@ def run_overfit_check(args: argparse.Namespace) -> OverfitCheckResult:
 
 def _build_dataset(args: argparse.Namespace) -> YOLOPoseDataset:
     transform = (
-        build_pose_train_transforms(args.image_size, flip_idx=COCO17_FLIP_IDX)
+        build_pose_train_transforms(args.image_size, flip_idx=COCO17_FLIP_IDX, random_crop=False)
         if args.augment
         else build_pose_eval_transforms(args.image_size)
     )

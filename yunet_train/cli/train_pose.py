@@ -11,11 +11,12 @@ from typing import Any
 import cv2
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 from yunet_train.tasks.pose import (
     COCO17_FLIP_IDX,
     COCO8_POSE_ROOT,
+    CocoJsonPoseDataset,
     YOLOPoseDataset,
     YuNetPoseCriterion,
     build_pose_eval_transforms,
@@ -25,12 +26,24 @@ from yunet_train.tasks.pose import (
     evaluate_pose_loss,
     train_pose_one_epoch,
 )
-from yunet_train.engine import LinearWarmupMultiStepLR, load_checkpoint, save_checkpoint
+from yunet_train.engine import (
+    LinearWarmupMultiStepLR,
+    load_checkpoint,
+    load_model_weights_only,
+    save_checkpoint,
+)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train YuNet pose detector.")
     parser.add_argument("--data-root", type=Path, default=COCO8_POSE_ROOT)
+    parser.add_argument("--data-format", choices=("yolo", "coco_json"), default="yolo")
+    parser.add_argument("--coco-train-ann", type=Path, default=None, help="COCO keypoints JSON for training split.")
+    parser.add_argument(
+        "--coco-train-images", type=Path, default=None, help="Directory of training images (e.g. .../train2017)."
+    )
+    parser.add_argument("--coco-val-ann", type=Path, default=None)
+    parser.add_argument("--coco-val-images", type=Path, default=None)
     parser.add_argument("--variant", default="yunet_n", choices=("yunet_n", "yunet_s"))
     parser.add_argument("--work-dir", type=Path, default=Path("work_dirs/yunet_pose"))
     parser.add_argument("--image-size", type=int, default=640)
@@ -39,23 +52,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prefetch-factor", type=int, default=1)
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--lr", type=float, default=0.01)
-    parser.add_argument("--lr-steps", type=int, nargs="*", default=[400, 544])
+    parser.add_argument("--lr-steps", type=int, nargs="*", default=[48, 56])
     parser.add_argument("--lr-gamma", type=float, default=0.1)
     parser.add_argument("--warmup-iters", type=int, default=1500)
     parser.add_argument("--warmup-ratio", type=float, default=0.001)
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--weight-decay", type=float, default=5e-4)
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
-    parser.add_argument("--checkpoint-interval", type=int, default=1)
-    parser.add_argument("--eval-interval", type=int, default=1)
+    parser.add_argument("--checkpoint-interval", type=int, default=8)
+    parser.add_argument("--eval-interval", type=int, default=8)
     parser.add_argument("--resume", type=Path, default=None)
+    parser.add_argument(
+        "--resume-weights-only",
+        action="store_true",
+        help="With --resume: load model weights only; reset optimizer, LR scheduler, and epoch counter (for domain fine-tuning).",
+    )
     parser.add_argument("--limit-samples", type=int, default=None)
     parser.add_argument("--eval-limit-samples", type=int, default=None)
     parser.add_argument("--no-pin-memory", action="store_true")
     parser.add_argument("--no-persistent-workers", action="store_true")
-    parser.add_argument("--log-interval", type=int, default=20)
-    parser.add_argument("--log-file", type=Path, default=None)
-    return parser.parse_args()
+    parser.add_argument("--log-interval", type=int, default=100)
+    parser.add_argument("--no-random-crop", action="store_true")
+    parser.add_argument("--min-box-size", type=float, default=10.0)
 
 
 def main() -> None:
@@ -63,6 +81,7 @@ def main() -> None:
 
 
 def run_training(args: argparse.Namespace) -> None:
+    _validate_pose_train_args(args)
     args.work_dir.mkdir(parents=True, exist_ok=True)
     logger = RunLogger(args.log_file or args.work_dir / "train_pose.log")
     try:
@@ -87,27 +106,39 @@ def run_training(args: argparse.Namespace) -> None:
         start_epoch = 1
         best_loss = _read_best_loss(args.work_dir)
         if args.resume is not None:
-            checkpoint = load_checkpoint(
-                args.resume,
-                model=model,
-                optimizer=optimizer,
-                scheduler=lr_scheduler,
-                map_location="cpu",
-            )
-            _move_optimizer_state_to_device(optimizer, device)
-            start_epoch = int(checkpoint.get("epoch", 0)) + 1
-            best_loss = _checkpoint_best_loss(checkpoint, fallback=best_loss)
-            logger(
-                f"resumed_checkpoint path={args.resume} "
-                f"start_epoch={start_epoch} "
-                f"best_loss={best_loss if best_loss is not None else 'none'}"
-            )
+            if getattr(args, "resume_weights_only", False):
+                load_model_weights_only(args.resume, model=model, map_location="cpu")
+                model.to(device)
+                start_epoch = 1
+                best_loss = None
+                logger(
+                    f"resume_weights_only path={args.resume} "
+                    f"optimizer_and_scheduler_reset start_epoch={start_epoch}"
+                )
+            else:
+                checkpoint = load_checkpoint(
+                    args.resume,
+                    model=model,
+                    optimizer=optimizer,
+                    scheduler=lr_scheduler,
+                    map_location="cpu",
+                )
+                _move_optimizer_state_to_device(optimizer, device)
+                start_epoch = int(checkpoint.get("epoch", 0)) + 1
+                best_loss = _checkpoint_best_loss(checkpoint, fallback=best_loss)
+                logger(
+                    f"resumed_checkpoint path={args.resume} "
+                    f"start_epoch={start_epoch} "
+                    f"best_loss={best_loss if best_loss is not None else 'none'}"
+                )
 
         train_loader = _build_loader(args, split="train", shuffle=True, device=device)
-        val_loader = _build_loader(args, split="val", shuffle=False, device=device) if args.eval_interval > 0 else None
+        val_loader = _build_val_loader(args, device=device)
         logger(f"train_loader steps={len(train_loader)} batch_size={args.batch_size} workers={args.workers}")
         if val_loader is not None:
             logger(f"val_loader steps={len(val_loader)} eval_interval={args.eval_interval}")
+        elif args.eval_interval > 0 and getattr(args, "data_format", "yolo") == "coco_json":
+            logger("coco_json: eval_interval>0 but no val annotations; validation disabled")
 
         started_at = time.perf_counter()
         for epoch in range(start_epoch, args.epochs + 1):
@@ -213,13 +244,67 @@ def run_training(args: argparse.Namespace) -> None:
         logger.close()
 
 
+def _build_val_loader(args: argparse.Namespace, *, device: torch.device) -> DataLoader | None:
+    if args.eval_interval <= 0:
+        return None
+    if getattr(args, "data_format", "yolo") == "coco_json" and args.coco_val_ann is None:
+        return None
+    return _build_loader(args, split="val", shuffle=False, device=device)
+
+
+def _validate_pose_train_args(args: argparse.Namespace) -> None:
+    if getattr(args, "resume_weights_only", False) and args.resume is None:
+        raise ValueError("--resume-weights-only requires --resume")
+    if getattr(args, "data_format", "yolo") == "coco_json":
+        if args.coco_train_ann is None or args.coco_train_images is None:
+            raise ValueError("data-format=coco_json requires --coco-train-ann and --coco-train-images")
+        ca, ci = args.coco_val_ann, args.coco_val_images
+        if (ca is None) != (ci is None):
+            raise ValueError("Provide both --coco-val-ann and --coco-val-images, or neither")
+
+
+def _build_pose_dataset(
+    args: argparse.Namespace,
+    *,
+    split: str,
+    transform: Any,
+) -> Dataset:
+    fmt = getattr(args, "data_format", "yolo")
+    if fmt == "yolo":
+        return YOLOPoseDataset(
+            args.data_root,
+            split=split,
+            transform=transform,
+            kpt_shape=(17, 3),
+        )
+    if split == "train":
+        return CocoJsonPoseDataset(
+            args.coco_train_ann,
+            args.coco_train_images,
+            transform=transform,
+            kpt_shape=(17, 3),
+        )
+    assert args.coco_val_ann is not None and args.coco_val_images is not None
+    return CocoJsonPoseDataset(
+        args.coco_val_ann,
+        args.coco_val_images,
+        transform=transform,
+        kpt_shape=(17, 3),
+    )
+
+
 def _build_loader(args: argparse.Namespace, *, split: str, shuffle: bool, device: torch.device) -> DataLoader:
     transform = (
-        build_pose_train_transforms(args.image_size, flip_idx=COCO17_FLIP_IDX)
+        build_pose_train_transforms(
+            args.image_size,
+            flip_idx=COCO17_FLIP_IDX,
+            random_crop=not getattr(args, "no_random_crop", False),
+            min_box_size=getattr(args, "min_box_size", 10.0),
+        )
         if split == "train"
         else build_pose_eval_transforms(args.image_size)
     )
-    dataset = YOLOPoseDataset(args.data_root, split=split, transform=transform, kpt_shape=(17, 3))
+    dataset = _build_pose_dataset(args, split=split, transform=transform)
     limit = args.limit_samples if split == "train" else args.eval_limit_samples
     if limit is not None:
         dataset.records = dataset.records[:limit]

@@ -23,6 +23,11 @@ def test_train_pose_cli_smoke_saves_checkpoint() -> None:
         rmtree(work_dir)
     args = argparse.Namespace(
         data_root=_coco8_pose_root(),
+        data_format="yolo",
+        coco_train_ann=None,
+        coco_train_images=None,
+        coco_val_ann=None,
+        coco_val_images=None,
         variant="yunet_n",
         work_dir=work_dir,
         image_size=64,
@@ -41,12 +46,15 @@ def test_train_pose_cli_smoke_saves_checkpoint() -> None:
         checkpoint_interval=1,
         eval_interval=1,
         resume=None,
+        resume_weights_only=False,
         limit_samples=1,
         eval_limit_samples=1,
         no_pin_memory=False,
         no_persistent_workers=False,
         log_interval=1,
         log_file=None,
+        no_random_crop=False,
+        min_box_size=10.0,
     )
 
     train_pose_cli.run_training(args)
@@ -81,6 +89,11 @@ def test_train_pose_cli_resumes_from_latest_checkpoint() -> None:
         rmtree(work_dir)
     args = argparse.Namespace(
         data_root=_coco8_pose_root(),
+        data_format="yolo",
+        coco_train_ann=None,
+        coco_train_images=None,
+        coco_val_ann=None,
+        coco_val_images=None,
         variant="yunet_n",
         work_dir=work_dir,
         image_size=64,
@@ -99,12 +112,15 @@ def test_train_pose_cli_resumes_from_latest_checkpoint() -> None:
         checkpoint_interval=10,
         eval_interval=0,
         resume=None,
+        resume_weights_only=False,
         limit_samples=1,
         eval_limit_samples=None,
         no_pin_memory=False,
         no_persistent_workers=False,
         log_interval=0,
         log_file=None,
+        no_random_crop=False,
+        min_box_size=10.0,
     )
     train_pose_cli.run_training(args)
 
@@ -129,6 +145,11 @@ def test_train_pose_cli_checkpoint_interval_zero_disables_epoch_checkpoint() -> 
         rmtree(work_dir)
     args = argparse.Namespace(
         data_root=_coco8_pose_root(),
+        data_format="yolo",
+        coco_train_ann=None,
+        coco_train_images=None,
+        coco_val_ann=None,
+        coco_val_images=None,
         variant="yunet_n",
         work_dir=work_dir,
         image_size=64,
@@ -147,12 +168,15 @@ def test_train_pose_cli_checkpoint_interval_zero_disables_epoch_checkpoint() -> 
         checkpoint_interval=0,
         eval_interval=0,
         resume=None,
+        resume_weights_only=False,
         limit_samples=1,
         eval_limit_samples=None,
         no_pin_memory=False,
         no_persistent_workers=False,
         log_interval=0,
         log_file=None,
+        no_random_crop=False,
+        min_box_size=10.0,
     )
 
     train_pose_cli.run_training(args)

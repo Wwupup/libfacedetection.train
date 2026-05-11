@@ -1,6 +1,7 @@
 from .collate import collate_pose_samples
 from .config import COCO17_FLIP_IDX, COCO17_OKS_SIGMA, PoseDatasetConfig
 from .criterion import YuNetPoseCriterion, YuNetPoseLossWeights
+from .coco_json_dataset import CocoJsonPoseDataset
 from .dataset import YOLOPoseDataset
 from .losses import keypoint_visibility_loss, oks_keypoint_loss
 from .model import YuNetPose, YuNetPoseHead, build_yunet_pose
@@ -8,9 +9,11 @@ from .paths import COCO8_POSE_ROOT, COCO_PERSON_KEYPOINTS_VAL2017, COCO_ROOT, CO
 from .postprocess import PoseDetectionResult, YuNetPosePostprocessor
 from .transforms import (
     Compose,
+    FilterSmallBoxes,
     Normalize,
     Pad,
     RandomHorizontalFlip,
+    RandomSquareCrop,
     Resize,
     ToTensor,
     build_pose_eval_transforms,
@@ -29,6 +32,7 @@ __all__ = [
     "PoseRecord",
     "PoseSample",
     "PoseBatch",
+    "CocoJsonPoseDataset",
     "YOLOPoseDataset",
     "YuNetPose",
     "YuNetPoseHead",
@@ -46,6 +50,8 @@ __all__ = [
     "Compose",
     "Resize",
     "RandomHorizontalFlip",
+    "RandomSquareCrop",
+    "FilterSmallBoxes",
     "Normalize",
     "Pad",
     "ToTensor",
